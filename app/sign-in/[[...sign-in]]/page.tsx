@@ -58,7 +58,7 @@ export default function SignInPage() {
         <div className="absolute top-8 left-8 lg:hidden">
           <Link href="/" className="flex items-center gap-2">
             <EnergyPilotLogo size={20} className="text-emerald-400" />
-            <span className="text-xl font-bold text-white">EnergyPilot</span>
+            <span className="text-lg sm:text-xl font-bold text-white">EnergyPilot</span>
           </Link>
         </div>
 

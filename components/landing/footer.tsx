@@ -14,9 +14,9 @@ export function Footer() {
   return (
     <footer className="border-t border-border py-16 bg-card/50">
       <div className="container mx-auto px-4">
-        <div className="grid md:grid-cols-5 gap-12">
+        <div className="grid sm:grid-cols-2 md:grid-cols-5 gap-8 md:gap-12">
           {/* Brand */}
-          <div className="md:col-span-2 space-y-4">
+          <div className="sm:col-span-2 space-y-4">
             <Link href="/" className="flex items-center gap-2">
               <Zap className="h-6 w-6 text-primary" />
               <span className="text-xl font-semibold text-foreground">EnergyPilot</span>
@@ -48,9 +48,9 @@ export function Footer() {
         </div>
 
         {/* Bottom */}
-        <div className="flex flex-col md:flex-row items-center justify-between mt-16 pt-8 border-t border-border">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-16 pt-8 border-t border-border">
           <p className="text-sm text-muted-foreground">© {date.getFullYear()} EnergyPilot Inc.</p>
-          <div className="flex items-center gap-4 mt-4 md:mt-0">
+          <div className="flex items-center gap-4">
             <Link href="#" className="text-muted-foreground hover:text-foreground transition-colors">
               <Twitter className="h-5 w-5" />
               <span className="sr-only">Twitter</span>

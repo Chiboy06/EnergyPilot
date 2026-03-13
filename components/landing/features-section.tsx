@@ -33,8 +33,8 @@ export function FeaturesSection() {
     <section id="features" className="py-24">
       <div className="container mx-auto px-4">
         <div className="text-center mb-16">
-          <h2 className="text-3xl lg:text-4xl font-bold mb-4">Built for precision control</h2>
-          <p className="text-muted-foreground max-w-2xl mx-auto">
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-4">Built for precision control</h2>
+          <p className="text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto">
             Everything you need to manage complex energy systems.
           </p>
         </div>
@@ -48,8 +48,8 @@ export function FeaturesSection() {
               <div className={`flex w-fit p-3 rounded-lg bg-secondary mb-6 ${feature.color}`}>
                 <feature.icon className="h-6 w-6" />
               </div>
-              <h3 className="text-xl font-semibold mb-3 text-foreground">{feature.title}</h3>
-              <p className="text-muted-foreground mb-4 leading-relaxed">{feature.description}</p>
+              <h3 className="text-lg sm:text-xl font-semibold mb-3 text-foreground">{feature.title}</h3>
+              <p className="text-sm sm:text-base text-muted-foreground mb-4 leading-relaxed">{feature.description}</p>
               <Link
                 href="#"
                 className={`inline-flex items-center text-sm ${feature.color} hover:underline`}

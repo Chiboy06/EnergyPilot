@@ -6,11 +6,11 @@ export function ComparisonSection() {
   return (
     <section className="py-24 bg-secondary/30">
       <div className="container mx-auto px-4">
-        <div className="grid md:grid-cols-2 border rounded-2xl gap-12 items-center">
+        <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center">
           {/* Before EnergyPilot */}
           <div className="space-y-6 px-4">
             <span className="text-sm text-muted-foreground">Before EnergyPilot</span>
-            <h2 className="text-3xl lg:text-4xl font-bold leading-tight">
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold leading-tight">
               Energy waste hides in{" "}
               <span className="text-destructive line-through decoration-destructive/50">plain sight</span>
             </h2>
@@ -29,13 +29,13 @@ export function ComparisonSection() {
           </div>
 
           {/* With EnergyPilot */}
-          <Card className="bg-card border-border p-8 rounded-none">
+          <Card className="bg-card border-border p-6 md:p-8 rounded-lg md:rounded-none">
             <span className="text-sm text-primary">With EnergyPilot</span>
-            <h3 className="text-2xl lg:text-3xl font-bold mt-2 mb-6">
+            <h3 className="text-xl sm:text-2xl lg:text-3xl font-bold mt-2 mb-6">
               Total clarity in one dashboard
             </h3>
-            <div className="flex items-baseline gap-2 mb-4">
-              <span className="text-5xl lg:text-6xl font-mono font-bold text-foreground">2,482,901</span>
+            <div className="flex items-baseline gap-2 mb-4 flex-wrap">
+              <span className="text-4xl sm:text-5xl lg:text-6xl font-mono font-bold text-foreground">2,482,901</span>
               <span className="text-muted-foreground">kWh</span>
             </div>
             <p className="text-sm text-muted-foreground">

@@ -10,7 +10,7 @@ export function TestimonialSection() {
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Testimonial Quote */}
           <div className="space-y-8">
-            <blockquote className="text-2xl lg:text-3xl font-medium leading-relaxed text-foreground">
+            <blockquote className="text-xl sm:text-2xl lg:text-3xl font-medium leading-relaxed text-foreground">
               &ldquo;EnergyPilot helped us reduce our commercial facility&apos;s energy consumption by{" "}
               <span className="text-primary">23%</span> in just the first month.&rdquo;
             </blockquote>
@@ -27,19 +27,19 @@ export function TestimonialSection() {
           </div>
 
           {/* Case Study Card */}
-          <Card className="bg-card border-border p-8 rounded-xl">
+          <Card className="bg-card border-border p-6 md:p-8 rounded-xl">
             <span className="text-xs text-muted-foreground uppercase tracking-wider">Case Study Result</span>
             <div className="mt-6 space-y-6">
               {/* Before/After Chart */}
-              <div className="flex items-end gap-4 justify-center h-48">
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-56 bg-muted rounded-t h-24" />
-                  <span className="text-sm text-muted-foreground">Before</span>
+              <div className="flex items-end gap-2 sm:gap-4 justify-center h-48">
+                <div className="flex flex-col items-center gap-2 flex-1 max-w-[120px]">
+                  <div className="w-full bg-muted rounded-t h-24" />
+                  <span className="text-xs sm:text-sm text-muted-foreground">Before</span>
                 </div>
-                <div className="flex flex-col items-center gap-2">
+                <div className="flex flex-col items-center gap-2 flex-1 max-w-[120px]">
                   <div className="text-xs text-muted-foreground mb-2">-23%</div>
-                  <div className="w-56 bg-primary rounded-t h-40" />
-                  <span className="text-sm text-foreground">After</span>
+                  <div className="w-full bg-primary rounded-t h-40" />
+                  <span className="text-xs sm:text-sm text-foreground">After</span>
                 </div>
               </div>
               <div className="text-center">

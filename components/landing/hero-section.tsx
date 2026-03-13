@@ -30,11 +30,11 @@ export function HeroSection() {
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Left Content */}
           <div className="space-y-8">
-            <h1 className="text-3xl lg:text-3xl xl:text-5xl font-bold leading-tight text-balance">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight text-balance">
               Intelligent Energy Monitoring for{" "}
               <span className="text-primary">Smarter Spaces</span>
             </h1>
-            <p className="text-lg text-muted-foreground max-w-lg leading-relaxed">
+            <p className="text-base sm:text-lg text-muted-foreground max-w-lg leading-relaxed">
               Real-time insights, ML-powered predictions, and intelligent control for residential and commercial IoT systems. Track 10+ circuits from anywhere.
             </p>
             <div className="flex flex-wrap gap-4">

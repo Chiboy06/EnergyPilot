@@ -61,9 +61,9 @@ export function DashboardHeader() {
         <Avatar className="h-8 w-8 sm:h-9 sm:w-9">
             <UserButton/>
           {/* <AvatarImage src={user?.imageUrl} alt={getDisplayName()} /> */}
-          <AvatarFallback className="bg-emerald-500 text-black text-sm font-semibold">
+          {/* <AvatarFallback className="bg-emerald-500 text-black text-sm font-semibold">
             {getInitials()}
-          </AvatarFallback>
+          </AvatarFallback> */}
         </Avatar>
       </div>
     </header>

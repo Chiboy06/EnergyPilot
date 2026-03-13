@@ -26,7 +26,7 @@ export function DemoSection() {
     <section id="how-it-works" className="py-24 bg-secondary/30">
       <div className="container mx-auto px-4">
         <div className="text-center mb-12">
-          <h2 className="text-3xl lg:text-4xl font-bold mb-4">See it in action</h2>
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-4">See it in action</h2>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -49,7 +49,7 @@ export function DemoSection() {
               <Card className="bg-card border-border rounded-xl overflow-hidden">
                 <div className="grid lg:grid-cols-2">
                   {/* Left Panel - Chart Preview */}
-                  <div className="p-8 border-r border-border">
+                  <div className="p-6 md:p-8 lg:border-r border-border">
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-muted-foreground">{data.title}</span>
@@ -98,7 +98,7 @@ export function DemoSection() {
                   </div>
 
                   {/* Right Panel - Data Table */}
-                  <div className="p-8">
+                  <div className="p-6 md:p-8 border-t lg:border-t-0 border-border">
                     <div className="space-y-4">
                       <div className="flex items-center justify-between mb-4">
                         <span className="font-medium text-foreground">Energy Distribution</span>
