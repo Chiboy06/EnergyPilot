@@ -9,6 +9,8 @@ export default defineSchema({
     lastName: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
     deviceManagementId: v.string(), // Unique ID for device management
+    hasCompletedOnboarding: v.optional(v.boolean()),
+    activeFacilityId: v.optional(v.string()), // deviceManagementId of active hub
     createdAt: v.number(),
     lastSignIn: v.number(),
   })
@@ -34,6 +36,11 @@ export default defineSchema({
     powerRating: v.number(), // watts
     userId: v.id("users"), // Reference to users table
     deviceManagementId: v.string(), // User's device management ID
+    serialNumber: v.optional(v.string()),
+    facilityName: v.optional(v.string()),
+    facilityType: v.optional(v.string()),
+    facilityRooms: v.optional(v.string()), // JSON array of room names
+    breakerCapacity: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])

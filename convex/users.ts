@@ -95,3 +95,17 @@ export const getCurrentUser = query({
     return user;
   },
 });
+
+// Get current user by clerkId passed from client.
+// Used because auth.config.ts has no providers configured — ctx.auth.getUserIdentity()
+// always returns null in this setup, so we accept clerkId explicitly from the client.
+export const getCurrentUserByClerkId = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    if (!args.clerkId) return null;
+    return await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+  },
+});

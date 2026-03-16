@@ -9,6 +9,7 @@
  */
 
 import type * as devices from "../devices.js";
+import type * as onboarding from "../onboarding.js";
 import type * as readings from "../readings.js";
 import type * as users from "../users.js";
 
@@ -20,6 +21,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   devices: typeof devices;
+  onboarding: typeof onboarding;
   readings: typeof readings;
   users: typeof users;
 }>;

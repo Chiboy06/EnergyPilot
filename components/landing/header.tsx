@@ -43,7 +43,7 @@ export function LandingHeader() {
               </Button>
             </SheetTrigger>
             <SheetContent side="right" className="w-[300px] sm:w-[400px]">
-              <nav className="flex flex-col gap-6 mt-8">
+              <nav className="flex flex-col gap-6 mt-8 mx-3 px-4">
                 <Link href="#features" className="text-lg text-foreground hover:text-primary transition-colors">
                   Features
                 </Link>

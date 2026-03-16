@@ -92,7 +92,7 @@ export function StatsCards() {
           {/* Bars visualization */}
           {stat.showBars && (
             <div className="flex items-end gap-1 h-8 mt-4">
-              {[40, 60, 50, 70, 45, 80, 55, 65, 75, 90].map((height, i) => (
+              {[90, 110, 130, 140, 145, 120, 105,165, 175, 126].map((height, i) => (
                 <div
                   key={i}
                   className="flex-1 bg-emerald-500 rounded-sm transition-all"
