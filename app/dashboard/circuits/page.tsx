@@ -1,6 +1,8 @@
-'use client'
+"use client";
 
-import { CircuitGrid } from '@/components/dashboard/circuit-grid'
+export const dynamic = "force-dynamic";
+
+import { CircuitGrid } from "@/components/dashboard/circuit-grid"
 import { useFacility } from '@/hooks/use-facility'
 import { getRoomMockPower } from '@/lib/room-utils'
 import { useState } from 'react'
@@ -15,39 +17,36 @@ export default function CircuitsPage() {
   }).length
 
   return (
-    <div className="flex-1 flex flex-col">
-      <main className="flex-1 overflow-auto">
-        <div className="p-8">
-          {/* Page title */}
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-foreground">Circuits</h1>
-            {facilityName && (
-              <p className="text-sm text-muted-foreground capitalize">
-                {facilityName} &middot; {facilityType}
-              </p>
-            )}
-          </div>
+    <div className="space-y-5">
+      {/* Page title */}
+      <div>
+        <p className="text-[10px] font-semibold tracking-[0.16em] uppercase mb-1.5" style={{ color: "rgba(148,163,184,0.55)" }}>
+          {facilityName ?? "Facility"} · Breaker array · CH1–16
+        </p>
+        <h1 className="text-2xl font-bold text-white tracking-tight">Circuits</h1>
+        <p className="text-[13px] mt-0.5" style={{ color: "rgba(100,116,139,0.9)" }}>
+          16-channel power monitoring · relay control
+        </p>
+      </div>
 
-          {/* Filter Tabs */}
-          <div className="mb-8 flex gap-4">
-            {(['all', 'active', 'issues'] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setActiveFilter(f)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeFilter === f
-                    ? 'bg-secondary text-foreground'
-                    : 'bg-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {f === 'issues' ? `Issues (${issueCount})` : f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
-            ))}
-          </div>
+      {/* Filter Tabs */}
+      <div className="flex gap-2">
+        {(['all', 'active', 'issues'] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setActiveFilter(f)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              activeFilter === f
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                : 'bg-transparent text-slate-500 border border-transparent hover:text-slate-300'
+            }`}
+          >
+            {f === 'issues' ? `Issues (${issueCount})` : f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+      </div>
 
-          <CircuitGrid filter={activeFilter} />
-        </div>
-      </main>
+      <CircuitGrid filter={activeFilter} />
     </div>
   )
 }

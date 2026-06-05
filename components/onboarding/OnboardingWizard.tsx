@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
@@ -21,6 +21,11 @@ import {
   WifiOff,
   Plus,
   X,
+  Activity,
+  TrendingUp,
+  Power,
+  Zap,
+  ChevronRight,
 } from "lucide-react";
 
 // ─── Facility type room presets ───────────────────────────────────────────────
@@ -453,6 +458,268 @@ function StepProvisioning({ serial, onComplete }: { serial: string; onComplete: 
   );
 }
 
+// ─── Intro Slides (3 swipeable slides before the setup steps) ────────────────
+const INTRO_SLIDES = [
+  {
+    icon: Activity,
+    color: "#18e39a",
+    title: "16 Channels, Live",
+    body: "True-RMS current on every circuit, streamed from ESP32 edge nodes via sub-millisecond ESP-NOW.",
+    visual: "circuits" as const,
+  },
+  {
+    icon: TrendingUp,
+    color: "#5b9dff",
+    title: "Forecast & Prevent",
+    body: "On-device SageMaker models predict load peaks and flag anomalies before a breaker ever trips.",
+    visual: "forecast" as const,
+  },
+  {
+    icon: Power,
+    color: "#a78bfa",
+    title: "Control from Anywhere",
+    body: "Actuate any breaker remotely, shift load to off-peak tariffs, and cut phantom draw with one tap.",
+    visual: "relay" as const,
+  },
+];
+
+function CircuitsVisual() {
+  return (
+    <div className="flex flex-wrap gap-2 justify-center max-w-[180px]">
+      {Array.from({ length: 16 }).map((_, i) => (
+        <span
+          key={i}
+          className="w-8 h-8 rounded-[9px] grid place-items-center text-xs"
+          style={{
+            background: i % 5 === 3 ? "rgba(255,107,107,0.18)" : "rgba(24,227,154,0.16)",
+            color: i % 5 === 3 ? "#ff6b6b" : "#18e39a",
+            animation: `eg-pulse-glow 2.4s ease-in-out ${i * 0.12}s infinite`,
+          }}
+        >
+          <Zap size={13} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ForecastVisual() {
+  const pts = [12, 18, 14, 22, 19, 28, 24, 33, 30, 38, 34, 30];
+  const min = Math.min(...pts), max = Math.max(...pts), rng = max - min || 1;
+  const w = 160, h = 60, pad = 4;
+  const coords = pts.map((v, i) => [
+    pad + (i / (pts.length - 1)) * (w - pad * 2),
+    h - pad - ((v - min) / rng) * (h - pad * 2),
+  ]);
+  const line = coords.map((p, i) => `${i === 0 ? "M" : "L"}${p[0]},${p[1]}`).join(" ");
+  return (
+    <div
+      className="glass-card p-4"
+      style={{ borderRadius: 18, width: 200 }}
+    >
+      <svg width={w} height={h} style={{ display: "block", overflow: "visible" }}>
+        <defs>
+          <linearGradient id="fo-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#5b9dff" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="#5b9dff" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path
+          d={`${line} L${w - pad},${h} L${pad},${h} Z`}
+          fill="url(#fo-grad)"
+        />
+        <path d={line} fill="none" stroke="#5b9dff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        <circle
+          cx={coords[coords.length - 1][0]}
+          cy={coords[coords.length - 1][1]}
+          r="3" fill="#5b9dff"
+          style={{ filter: "drop-shadow(0 0 5px #5b9dff)" }}
+        />
+      </svg>
+      <div className="flex justify-between mt-2">
+        <span className="font-mono text-[10px] text-slate-500">now</span>
+        <span className="font-mono text-[11px]" style={{ color: "#5b9dff" }}>peak 19:00</span>
+      </div>
+    </div>
+  );
+}
+
+function RelayVisual() {
+  const items: [string, boolean][] = [["EV Charger", true], ["Water Heater", false], ["HVAC Rooftop", true]];
+  return (
+    <div className="glass-card p-4 space-y-4" style={{ borderRadius: 18, width: 200 }}>
+      {items.map(([name, on]) => (
+        <div key={name} className="flex items-center justify-between">
+          <span className="text-[13px] font-medium text-white">{name}</span>
+          <div
+            className="relative flex-none cursor-pointer"
+            style={{
+              width: 44, height: 26, borderRadius: 999,
+              background: on
+                ? "linear-gradient(180deg,rgba(43,240,170,.9),rgba(16,185,129,.9))"
+                : "rgba(255,255,255,0.07)",
+              border: `1px solid ${on ? "rgba(24,227,154,.5)" : "rgba(255,255,255,0.12)"}`,
+              boxShadow: on ? "0 0 14px -2px rgba(24,227,154,.4)" : "none",
+              transition: "all .35s ease",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute", top: "50%", borderRadius: "50%",
+                width: 18, height: 18, background: "#fff",
+                boxShadow: "0 2px 6px rgba(0,0,0,.4)",
+                left: on ? "calc(100% - 21px)" : 3,
+                transform: "translateY(-50%)",
+                transition: "left .4s cubic-bezier(.34,1.56,.5,1)",
+              }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function IntroSlides({ onDone }: { onDone: () => void }) {
+  const [idx, setIdx] = useState(0);
+  const startX = useRef<number | null>(null);
+  const [drag, setDrag] = useState(0);
+  const last = INTRO_SLIDES.length - 1;
+
+  const go = (n: number) => setIdx(Math.max(0, Math.min(last, n)));
+
+  const onDown = (e: React.MouseEvent | React.TouchEvent) => {
+    startX.current = "touches" in e ? e.touches[0].clientX : e.clientX;
+  };
+  const onMove = (e: React.MouseEvent | React.TouchEvent) => {
+    if (startX.current == null) return;
+    const x = "touches" in e ? e.touches[0].clientX : e.clientX;
+    setDrag(x - startX.current);
+  };
+  const onUp = () => {
+    if (drag < -50 && idx < last) go(idx + 1);
+    else if (drag > 50 && idx > 0) go(idx - 1);
+    startX.current = null;
+    setDrag(0);
+  };
+
+  const s = INTRO_SLIDES[idx];
+
+  return (
+    <div className="min-h-screen flex flex-col" style={{ background: "radial-gradient(125% 80% at 18% 0%, #0e1b2c 0%, #070d16 52%, #04060a 100%)" }}>
+      {/* ambient glows */}
+      <div className="pointer-events-none">
+        <div className="fixed w-72 h-72 rounded-full -top-16 -left-16"
+             style={{ background: "radial-gradient(circle, rgba(24,227,154,.32), transparent 65%)", filter: "blur(55px)" }} />
+        <div className="fixed w-60 h-60 rounded-full -bottom-10 -right-16"
+             style={{ background: "radial-gradient(circle, rgba(56,224,224,.20), transparent 65%)", filter: "blur(60px)" }} />
+      </div>
+
+      {/* top bar */}
+      <div className="relative z-10 flex items-center justify-between px-6 py-5">
+        <div className="flex items-center gap-2.5">
+          <div className="h-8 w-8 rounded-[10px] grid place-items-center bg-emerald-500">
+            <EnergyPilotLogo size={16} className="text-white" />
+          </div>
+          <span className="font-bold text-white text-[15px]">Energenius</span>
+        </div>
+        <button
+          onClick={onDone}
+          className="text-[13px] font-medium text-slate-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg"
+          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)" }}
+        >
+          Skip
+        </button>
+      </div>
+
+      {/* slide */}
+      <div
+        className="relative z-10 flex-1 overflow-hidden select-none"
+        onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
+        onMouseLeave={() => { startX.current = null; setDrag(0); }}
+        onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
+      >
+        <div
+          className="flex h-full"
+          style={{
+            width: `${INTRO_SLIDES.length * 100}%`,
+            transform: `translateX(calc(${-idx * (100 / INTRO_SLIDES.length)}% + ${drag}px))`,
+            transition: startX.current == null ? "transform .45s cubic-bezier(.2,.8,.2,1)" : "none",
+          }}
+        >
+          {INTRO_SLIDES.map((slide, i) => (
+            <div
+              key={i}
+              className="flex flex-col items-center justify-center gap-8 px-8 text-center"
+              style={{ width: `${100 / INTRO_SLIDES.length}%` }}
+            >
+              {/* visual */}
+              <div className="h-40 grid place-items-center">
+                {slide.visual === "circuits" && <CircuitsVisual />}
+                {slide.visual === "forecast"  && <ForecastVisual />}
+                {slide.visual === "relay"     && <RelayVisual />}
+              </div>
+
+              {/* icon badge */}
+              <div
+                className="w-16 h-16 rounded-[18px] grid place-items-center"
+                style={{
+                  background: slide.color + "20",
+                  color: slide.color,
+                  boxShadow: `0 0 26px ${slide.color}44`,
+                }}
+              >
+                <slide.icon size={28} />
+              </div>
+
+              {/* copy */}
+              <div className="space-y-3">
+                <h2 className="text-[25px] font-bold text-white tracking-tight leading-tight">
+                  {slide.title}
+                </h2>
+                <p className="text-slate-400 text-[14.5px] leading-relaxed max-w-xs">
+                  {slide.body}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* dots + CTA */}
+      <div className="relative z-10 px-6 pb-10 space-y-5">
+        <div className="flex justify-center gap-2">
+          {INTRO_SLIDES.map((_, d) => (
+            <button
+              key={d}
+              onClick={() => go(d)}
+              style={{
+                height: 7, borderRadius: 999, cursor: "pointer",
+                width: d === idx ? 26 : 7,
+                background: d === idx ? "#18e39a" : "rgba(255,255,255,0.22)",
+                boxShadow: d === idx ? "0 0 10px rgba(24,227,154,0.6)" : "none",
+                transition: "all .35s",
+                border: "none",
+              }}
+            />
+          ))}
+        </div>
+        <button
+          onClick={() => (idx < last ? go(idx + 1) : onDone())}
+          className="w-full flex items-center justify-center gap-2 py-4 rounded-[16px] text-[15.5px] font-semibold transition-all"
+          style={{
+            background: "linear-gradient(180deg,#2bf0aa,#10b981)",
+            color: "#03130c",
+            boxShadow: "0 8px 24px -8px rgba(24,227,154,0.5), inset 0 1px 0 rgba(255,255,255,.4)",
+          }}
+        >
+          {idx < last ? "Next" : "Set Up Your Facility"} <ChevronRight size={17} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Root Wizard ──────────────────────────────────────────────────────────────
 export function OnboardingWizard({ isAddDevice = false }: { isAddDevice?: boolean }) {
   const router = useRouter();
@@ -466,6 +733,7 @@ export function OnboardingWizard({ isAddDevice = false }: { isAddDevice?: boolea
     user?.id ? { clerkId: user.id } : "skip"
   );
 
+  const [showIntro, setShowIntro] = useState(!isAddDevice);
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -498,6 +766,11 @@ export function OnboardingWizard({ isAddDevice = false }: { isAddDevice?: boolea
         <Loader2 className="h-8 w-8 text-emerald-400 animate-spin" />
       </div>
     );
+  }
+
+  // Show the 3-slide intro before the setup steps (skip for addDevice flow)
+  if (showIntro) {
+    return <IntroSlides onDone={() => setShowIntro(false)} />;
   }
 
   const handleProvision = async () => {
@@ -571,7 +844,7 @@ export function OnboardingWizard({ isAddDevice = false }: { isAddDevice?: boolea
           {step === 3 && (
             <StepProvisioning
               serial={serial}
-              onComplete={() => router.push(isAddDevice ? "/dashboard/settings" : "/dashboard")}
+              onComplete={() => router.push(isAddDevice ? "/dashboard/settings" : "/notifications-setup")}
             />
           )}
         </div>

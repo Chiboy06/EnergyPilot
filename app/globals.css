@@ -126,3 +126,166 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ─── Energenius V2 — Liquid Glass / Deep Space ─── */
+
+@keyframes eg-drift1 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%       { transform: translate3d(6%, 5%, 0) scale(1.12); }
+}
+@keyframes eg-drift2 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
+  50%       { transform: translate3d(-7%, 6%, 0) scale(0.92); }
+}
+@keyframes eg-drift3 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%       { transform: translate3d(5%, -5%, 0) scale(1.1); }
+}
+@keyframes eg-floaty {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-10px); }
+}
+@keyframes eg-live-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+@keyframes eg-pulse-glow {
+  0%, 100% { opacity: 0.8; box-shadow: 0 0 0 rgba(24, 227, 154, 0); }
+  50%       { opacity: 1;   box-shadow: 0 0 14px rgba(24, 227, 154, 0.55); }
+}
+@keyframes eg-slide-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes eg-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eg-anim-floaty,
+  .eg-anim-pulse-glow,
+  .eg-anim-drift1,
+  .eg-anim-drift2,
+  .eg-anim-drift3,
+  .live-dot { animation: none !important; }
+}
+
+/* Glass card — liquid glass surface */
+.glass-card {
+  background: linear-gradient(155deg, rgba(255,255,255,0.10), rgba(255,255,255,0.045) 55%);
+  border: 1px solid rgba(255,255,255,0.13);
+  border-radius: 22px;
+  backdrop-filter: blur(30px) saturate(165%);
+  -webkit-backdrop-filter: blur(30px) saturate(165%);
+  box-shadow: 0 22px 60px -24px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.10);
+  position: relative;
+}
+.glass-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(160deg, rgba(255,255,255,0.62), rgba(255,255,255,0.03) 26%, transparent 52%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+/* Pulsing live indicator dot */
+.live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #18e39a;
+  box-shadow: 0 0 10px rgba(24, 227, 154, 0.6);
+  animation: eg-live-pulse 2.2s ease-in-out infinite;
+}
+
+/* Emerald glow text */
+.glow-text {
+  text-shadow: 0 0 22px rgba(24, 227, 154, 0.42), 0 0 4px rgba(24, 227, 154, 0.22);
+}
+
+/* Animation helpers */
+.eg-anim-floaty      { animation: eg-floaty 4s ease-in-out infinite; }
+.eg-anim-pulse-glow  { animation: eg-pulse-glow 2.4s ease-in-out infinite; }
+.eg-anim-slide-up    { animation: eg-slide-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.eg-anim-fade-in     { animation: eg-fade-in 0.35s ease-out both; }
+.eg-anim-drift1      { animation: eg-drift1 34s ease-in-out infinite; }
+.eg-anim-drift2      { animation: eg-drift2 42s ease-in-out infinite; }
+.eg-anim-drift3      { animation: eg-drift3 48s ease-in-out infinite; }
+
+/* Deep-space mesh blobs — add as children of .eg-mesh */
+.eg-mesh {
+  position: fixed;
+  inset: -40% -20% -20% -20%;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(90px) saturate(135%);
+  opacity: 1;
+}
+.eg-mesh span {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+.eg-mesh .b1 {
+  width: 46vw; height: 46vw; left: 4%; top: 6%;
+  background: radial-gradient(circle at 30% 30%, rgba(24,227,154,0.5), transparent 62%);
+  animation: eg-drift1 34s ease-in-out infinite;
+}
+.eg-mesh .b2 {
+  width: 40vw; height: 40vw; right: 2%; top: -6%;
+  background: radial-gradient(circle at 50% 50%, rgba(56,224,224,0.30), transparent 60%);
+  animation: eg-drift2 42s ease-in-out infinite;
+}
+.eg-mesh .b3 {
+  width: 50vw; height: 50vw; left: 22%; bottom: -22%;
+  background: radial-gradient(circle at 50% 50%, rgba(91,157,255,0.20), transparent 62%);
+  animation: eg-drift3 48s ease-in-out infinite;
+}
+.eg-mesh .b4 {
+  width: 30vw; height: 30vw; right: 16%; bottom: -8%;
+  background: radial-gradient(circle at 50% 50%, rgba(167,139,250,0.18), transparent 60%);
+  animation: eg-drift1 38s ease-in-out infinite reverse;
+}
+
+/* ─── Global Card → Liquid Glass override ─── */
+/* All shadcn Card components automatically get glass treatment in the deep-space theme */
+[data-slot="card"] {
+  background: linear-gradient(155deg, rgba(255,255,255,0.09), rgba(255,255,255,0.04) 55%) !important;
+  border-color: rgba(255,255,255,0.11) !important;
+  border-radius: 18px !important;
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  box-shadow: 0 18px 48px -20px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.09);
+  color: #f1f5f9;
+}
+
+/* Muted text color in glass cards */
+[data-slot="card"] .text-muted-foreground {
+  color: rgba(100,116,139,0.9) !important;
+}
+[data-slot="card"] .text-foreground {
+  color: #f1f5f9 !important;
+}
+[data-slot="card"] .border-border {
+  border-color: rgba(255,255,255,0.08) !important;
+}
+[data-slot="card"] table thead tr,
+[data-slot="card"] .border-b {
+  border-color: rgba(255,255,255,0.08) !important;
+}
+[data-slot="card"] .hover\:bg-secondary\/30:hover {
+  background: rgba(255,255,255,0.04) !important;
+}
+[data-slot="card"] .bg-secondary {
+  background: rgba(255,255,255,0.06) !important;
+}

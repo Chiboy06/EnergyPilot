@@ -28,13 +28,13 @@ const settingsGroups = [
 
 export function SettingsSidebar({ activeTab, onTabChange }: SettingsSidebarProps) {
   return (
-    <aside className="space-y-6">
+    <aside className="glass-card p-2 space-y-3">
       {settingsGroups.map((group) => (
         <div key={group.label}>
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest px-1 mb-2">
+          <p className="text-[10px] font-semibold tracking-[0.14em] uppercase px-3 py-1.5" style={{ color: "rgba(88,105,128,0.9)" }}>
             {group.label}
           </p>
-          <nav className="space-y-1">
+          <nav className="space-y-0.5">
             {group.items.map((item) => {
               const Icon = item.icon
               const isActive = activeTab === item.id
@@ -42,24 +42,28 @@ export function SettingsSidebar({ activeTab, onTabChange }: SettingsSidebarProps
                 <button
                   key={item.id}
                   onClick={() => onTabChange(item.id)}
-                  className={cn(
-                    'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all group',
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[12px] text-sm transition-all text-left"
+                  style={
                     isActive
-                      ? 'bg-emerald-500/10 border border-emerald-500/20 text-white'
-                      : 'border border-transparent text-slate-400 hover:bg-slate-800/60 hover:text-white'
-                  )}
+                      ? { background: "rgba(24,227,154,0.12)", border: "1px solid rgba(24,227,154,0.28)", color: "#18e39a" }
+                      : { border: "1px solid transparent", color: "rgba(148,163,184,0.85)" }
+                  }
                 >
-                  <div className={cn(
-                    'h-8 w-8 rounded-lg flex items-center justify-center shrink-0 transition-colors',
-                    isActive ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500 group-hover:text-slate-300'
-                  )}>
+                  <div
+                    className="h-8 w-8 rounded-[9px] flex items-center justify-center shrink-0"
+                    style={
+                      isActive
+                        ? { background: "rgba(24,227,154,0.14)", color: "#18e39a" }
+                        : { background: "rgba(255,255,255,0.06)", color: "rgba(88,105,128,0.9)" }
+                    }
+                  >
                     <Icon className="h-4 w-4" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className={cn('font-medium text-sm', isActive ? 'text-white' : '')}>{item.label}</p>
-                    <p className="text-xs text-slate-500">{item.description}</p>
+                    <p className="font-medium text-[13.5px] text-white">{item.label}</p>
+                    <p className="text-[11px]" style={{ color: "rgba(88,105,128,0.8)" }}>{item.description}</p>
                   </div>
-                  {isActive && <ChevronRight className="h-4 w-4 text-emerald-400 shrink-0" />}
+                  {isActive && <ChevronRight size={14} style={{ color: "#18e39a" }} />}
                 </button>
               )
             })}

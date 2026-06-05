@@ -60,59 +60,77 @@ export function CircuitGrid({ filter }: CircuitGridProps) {
   });
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
       {filtered.map(({ room, power, percentage, status, statusColor, progressColor }) => {
         const Icon = getRoomIcon(room);
         const isAnomaly = status === "ANOMALY";
         return (
           <div
             key={room}
-            className={`relative p-6 rounded-lg border transition-all ${
-              isAnomaly
-                ? "bg-destructive/5 border-destructive/50"
-                : "bg-card border-border hover:border-primary/30"
-            }`}
+            className="glass-card relative p-5 transition-all"
+            style={isAnomaly ? { borderColor: "rgba(255,107,107,0.38)" } : undefined}
           >
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-secondary text-primary">
+                <div
+                  className="p-2 rounded-[9px]"
+                  style={{
+                    background: isAnomaly ? "rgba(255,107,107,0.14)" : "rgba(24,227,154,0.10)",
+                    color: isAnomaly ? "rgba(255,107,107,1)" : "#18e39a",
+                  }}
+                >
                   <Icon className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-foreground">{room}</h3>
-                  <p className="text-xs text-muted-foreground">Circuit</p>
+                  <h3 className="font-semibold text-white text-[14px]">{room}</h3>
+                  <p className="text-[11px]" style={{ color: "rgba(88,105,128,0.9)" }}>Circuit</p>
                 </div>
               </div>
-              {isAnomaly && <AlertTriangle className="h-5 w-5 text-destructive" />}
+              {isAnomaly && <AlertTriangle size={17} style={{ color: "rgba(255,107,107,1)" }} />}
             </div>
 
-            <div className="mb-4">
-              <div className="text-3xl font-bold text-foreground mb-1">
+            <div className="mb-3">
+              <div className="font-mono font-bold text-[26px] text-white leading-none">
                 {power.toLocaleString()}
-                <span className="text-xs text-muted-foreground ml-1">W</span>
+                <span className="text-[12px] font-normal ml-1" style={{ color: "rgba(100,116,139,0.8)" }}>W</span>
               </div>
             </div>
 
-            <div className="mb-4">
-              <Badge className={getStatusColor(status)}>{status}</Badge>
+            <div className="mb-3">
+              <span
+                className="text-[10.5px] font-semibold px-2 py-0.5 rounded-full"
+                style={{
+                  color: isAnomaly ? "rgba(255,107,107,1)" : status === "HIGH LOAD" ? "rgba(255,181,71,1)" : "#18e39a",
+                  background: isAnomaly ? "rgba(255,107,107,0.12)" : status === "HIGH LOAD" ? "rgba(255,181,71,0.12)" : "rgba(24,227,154,0.12)",
+                  border: `1px solid ${isAnomaly ? "rgba(255,107,107,0.3)" : status === "HIGH LOAD" ? "rgba(255,181,71,0.3)" : "rgba(24,227,154,0.3)"}`,
+                }}
+              >
+                {status}
+              </span>
             </div>
 
             <div className="mb-4">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs text-muted-foreground">Load</span>
-                <span className="text-xs font-medium text-foreground">{percentage}%</span>
+              <div className="flex justify-between items-center mb-1.5">
+                <span className="text-[11.5px]" style={{ color: "rgba(100,116,139,0.8)" }}>Load</span>
+                <span className="text-[11.5px] font-mono" style={{ color: "rgba(148,163,184,0.8)" }}>{percentage}%</span>
               </div>
-              <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+              <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
                 <div
-                  className={`h-full rounded-full transition-all ${progressColor}`}
-                  style={{ width: `${percentage}%` }}
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${percentage}%`,
+                    background: isAnomaly ? "#ff6b6b" : percentage > 80 ? "#ffb547" : "#18e39a",
+                  }}
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-border">
-              <span className="text-xs text-muted-foreground">
-                Pred: <span className="text-primary font-medium">{Math.round(power * 0.95)} W</span>
+            <div className="flex items-center justify-between pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+              <span className="text-[11px]" style={{ color: "rgba(100,116,139,0.8)" }}>
+                Pred:{" "}
+                <span className="font-mono font-medium" style={{ color: "#18e39a" }}>
+                  {Math.round(power * 0.95)} W
+                </span>
               </span>
               <Switch
                 checked={isEnabled(room)}

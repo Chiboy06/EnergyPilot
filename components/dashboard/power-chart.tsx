@@ -1,7 +1,5 @@
-"use client"
+"use client";
 
-import { Card } from "@/components/ui/card"
-import { AlertTriangle } from "lucide-react"
 import {
   AreaChart,
   Area,
@@ -12,142 +10,112 @@ import {
   ResponsiveContainer,
   Line,
   ComposedChart,
-} from "recharts"
+} from "recharts";
 
-// Generate sample data for 24 hours
 const generateData = () => {
-  const data = []
+  const data = [];
   for (let i = 0; i <= 24; i++) {
-    const hour = i.toString().padStart(2, "0") + ":00"
-    const baseActual = 1000 + Math.sin(i / 4) * 500 + Math.random() * 200
-    const basePredicted = 1000 + Math.sin(i / 4) * 500 + (i > 16 ? Math.random() * 100 : 0)
+    const hour = i.toString().padStart(2, "0") + ":00";
+    const baseActual = 1000 + Math.sin(i / 4) * 500 + Math.random() * 200;
+    const basePredicted = 1000 + Math.sin(i / 4) * 500 + (i > 16 ? Math.random() * 100 : 0);
     data.push({
       time: hour,
       actual: Math.round(baseActual),
       predicted: Math.round(basePredicted),
-    })
+    });
   }
-  return data
-}
+  return data;
+};
 
-const data = generateData()
+const data = generateData();
 
 export function PowerChart() {
   return (
-    <Card className="bg-card border-border p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+    <div className="glass-card p-5 sm:p-6">
+      <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Power Consumption Real-time</h2>
-          <p className="text-sm text-muted-foreground">Live data vs ML Prediction (24h)</p>
+          <p className="text-[10px] font-semibold tracking-[0.15em] uppercase mb-1.5" style={{ color: "rgba(148,163,184,0.6)" }}>
+            AWS IoT · SageMaker DeepAR
+          </p>
+          <h2 className="text-[17px] font-semibold text-white">Power Consumption Real-time</h2>
+          <p className="text-[12.5px] mt-0.5" style={{ color: "rgba(100,116,139,0.9)" }}>
+            Live data vs ML prediction · 24h
+          </p>
         </div>
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-3 rounded-full bg-primary" />
-            <span className="text-sm text-muted-foreground">Actual</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-3 rounded-full bg-chart-2" />
-            <span className="text-sm text-muted-foreground">Predicted</span>
-          </div>
+        <div className="flex items-center gap-5">
+          <span className="flex items-center gap-2 text-[12.5px]">
+            <span className="inline-block w-3 h-0.5 rounded" style={{ background: "#18e39a" }} />
+            <span style={{ color: "rgba(148,163,184,0.8)" }}>Actual</span>
+          </span>
+          <span className="flex items-center gap-2 text-[12.5px]">
+            <span className="inline-block w-3 h-0.5 rounded" style={{ background: "#a78bfa", opacity: 0.8 }} />
+            <span style={{ color: "rgba(148,163,184,0.8)" }}>Predicted</span>
+          </span>
         </div>
       </div>
 
-      {/* Chart with Tooltip Card */}
-      <div className="relative">
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="actualGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#30363d" vertical={false} />
-              <XAxis
-                dataKey="time"
-                stroke="#8b949e"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-              />
-              <YAxis
-                stroke="#8b949e"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(value) => `${value / 1000}kW`}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#161b22",
-                  border: "1px solid #30363d",
-                  borderRadius: "8px",
-                  color: "#e6edf3",
-                }}
-                labelStyle={{ color: "#8b949e" }}
-              />
-              <Area
-                type="monotone"
-                dataKey="actual"
-                stroke="#10b981"
-                strokeWidth={2}
-                fill="url(#actualGradient)"
-                name="Actual"
-              />
-              <Line
-                type="monotone"
-                dataKey="predicted"
-                stroke="#3b82f6"
-                strokeWidth={2}
-                strokeDasharray="5 5"
-                dot={false}
-                name="Predicted"
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Floating Tooltip Card */}
-        <Card className="absolute top-4 right-4 bg-card border-border p-4 w-48">
-          <p className="text-2xl font-mono font-semibold text-foreground mb-4">13:48:53</p>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-sm bg-primary" />
-                <span className="text-sm text-primary">Actual</span>
-              </div>
-              <span className="font-mono text-sm text-foreground">1,246W</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-sm bg-chart-2" />
-                <span className="text-sm text-chart-2">Predicted</span>
-              </div>
-              <span className="font-mono text-sm text-foreground">1,246W</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-3 w-3 text-destructive" />
-                <span className="text-sm text-destructive">Anomaly</span>
-              </div>
-              <span className="font-mono text-sm text-destructive">0.85</span>
-            </div>
-          </div>
-          {/* Mini sparkline */}
-          <div className="mt-4 h-8 bg-secondary/50 rounded overflow-hidden">
-            <svg viewBox="0 0 100 30" className="w-full h-full">
-              <path
-                d="M0,25 Q10,20 20,22 T40,18 T60,15 T80,12 T100,8"
-                fill="none"
-                stroke="#10b981"
-                strokeWidth="1.5"
-              />
-            </svg>
-          </div>
-        </Card>
+      <div className="h-72">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="actualGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor="#18e39a" stopOpacity={0.28} />
+                <stop offset="95%" stopColor="#18e39a" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="predGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor="#a78bfa" stopOpacity={0.15} />
+                <stop offset="95%" stopColor="#a78bfa" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+            <XAxis
+              dataKey="time"
+              stroke="rgba(88,105,128,0.6)"
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              tick={{ fill: "rgba(88,105,128,0.8)" }}
+            />
+            <YAxis
+              stroke="rgba(88,105,128,0.6)"
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(v) => `${(v / 1000).toFixed(1)}k`}
+              tick={{ fill: "rgba(88,105,128,0.8)" }}
+            />
+            <Tooltip
+              contentStyle={{
+                background: "rgba(7,11,18,0.92)",
+                border: "1px solid rgba(255,255,255,0.10)",
+                borderRadius: 12,
+                color: "#e2e8f0",
+                backdropFilter: "blur(12px)",
+                fontSize: 12,
+              }}
+              labelStyle={{ color: "rgba(148,163,184,0.8)", marginBottom: 4 }}
+              cursor={{ stroke: "rgba(255,255,255,0.08)" }}
+            />
+            <Area
+              type="monotone"
+              dataKey="actual"
+              stroke="#18e39a"
+              strokeWidth={2}
+              fill="url(#actualGrad)"
+              name="Actual"
+            />
+            <Line
+              type="monotone"
+              dataKey="predicted"
+              stroke="#a78bfa"
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              dot={false}
+              name="Predicted"
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
       </div>
-    </Card>
-  )
+    </div>
+  );
 }
