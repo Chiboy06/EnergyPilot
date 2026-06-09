@@ -35,8 +35,8 @@ export function DeviceManagement() {
 
   const isLoading = currentUser === undefined || hubs === undefined
   const hasRealHubs = hubs && hubs.length > 0
-  const activeSerial = currentUser?.activeFacilityId
-  const activeHub = hubs?.find((h) => h.serialNumber === activeSerial)
+  const activeFacilityId = currentUser?.activeFacilityId
+  const activeHub = hubs?.find((h) => h.facilityId === activeFacilityId)
 
   return (
     <div className="space-y-8">
@@ -62,7 +62,7 @@ export function DeviceManagement() {
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white hover:border-slate-600 transition-colors"
           >
             <span className="text-slate-400">Active facility:</span>
-            <span className="font-medium">{activeHub?.facilityName ?? activeHub?.name ?? '—'}</span>
+            <span className="font-medium">{activeHub?.name ?? '—'}</span>
             <ChevronDown className={cn('h-4 w-4 text-slate-400 transition-transform', dropdownOpen && 'rotate-180')} />
           </button>
 
@@ -72,17 +72,16 @@ export function DeviceManagement() {
                 <button
                   key={hub._id}
                   onClick={async () => {
-                    if (!user) return
-                    await setActiveFacility({ clerkId: user.id, serialNumber: hub.serialNumber! })
+                    await setActiveFacility({ facilityId: hub.facilityId })
                     setDropdownOpen(false)
                   }}
                   className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-slate-700 transition-colors text-left"
                 >
                   <div>
-                    <p className="font-medium text-white">{hub.facilityName ?? hub.name}</p>
-                    <p className="text-xs text-slate-400 capitalize">{hub.facilityType ?? 'Hub'} · {hub.serialNumber}</p>
+                    <p className="font-medium text-white">{hub.name}</p>
+                    <p className="text-xs text-slate-400 font-mono">{hub.macAddress}</p>
                   </div>
-                  {hub.serialNumber === activeSerial && (
+                  {hub.facilityId === activeFacilityId && (
                     <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
                   )}
                 </button>
@@ -103,7 +102,7 @@ export function DeviceManagement() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  {['NAME', 'SERIAL', 'FACILITY', 'TYPE', 'STATUS', 'ADDED'].map((h) => (
+                  {['NAME', 'MAC ADDRESS', 'CHANNELS', 'STATUS', 'ADDED'].map((h) => (
                     <th key={h} className="text-left text-xs font-semibold text-muted-foreground py-3 px-4">{h}</th>
                   ))}
                 </tr>
@@ -112,9 +111,8 @@ export function DeviceManagement() {
                 {hubs.map((hub) => (
                   <tr key={hub._id} className="border-b border-border hover:bg-secondary/30 transition-colors">
                     <td className="py-3 px-4 font-medium text-foreground">{hub.name}</td>
-                    <td className="py-3 px-4 text-muted-foreground font-mono text-xs">{hub.serialNumber}</td>
-                    <td className="py-3 px-4 text-muted-foreground">{hub.facilityName ?? '—'}</td>
-                    <td className="py-3 px-4 text-muted-foreground capitalize">{hub.facilityType ?? '—'}</td>
+                    <td className="py-3 px-4 text-muted-foreground font-mono text-xs">{hub.macAddress}</td>
+                    <td className="py-3 px-4 text-muted-foreground">{hub.channelCount} ch</td>
                     <td className="py-3 px-4">
                       <Badge className={cn(hub.status === 'online' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-500/20 text-slate-400')}>
                         {hub.status === 'online' ? <Wifi className="h-3 w-3 mr-1 inline" /> : <WifiOff className="h-3 w-3 mr-1 inline" />}

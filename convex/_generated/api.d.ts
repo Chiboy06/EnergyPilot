@@ -8,9 +8,10 @@
  * @module
  */
 
-import type * as devices from "../devices.js";
+import type * as http from "../http.js";
 import type * as onboarding from "../onboarding.js";
-import type * as readings from "../readings.js";
+import type * as relay from "../relay.js";
+import type * as telemetry from "../telemetry.js";
 import type * as users from "../users.js";
 
 import type {
@@ -20,9 +21,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  devices: typeof devices;
+  http: typeof http;
   onboarding: typeof onboarding;
-  readings: typeof readings;
+  relay: typeof relay;
+  telemetry: typeof telemetry;
   users: typeof users;
 }>;
 

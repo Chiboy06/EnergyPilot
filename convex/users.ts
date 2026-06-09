@@ -1,111 +1,184 @@
+// convex/users.ts
+// Handles user lifecycle via Clerk webhooks and provides
+// user queries used across the application.
+//
+// Clerk webhook setup:
+//   Clerk Dashboard → Webhooks → Add Endpoint
+//   URL: https://<your-deployment>.convex.site/clerk-webhook
+//   Events: user.created, user.updated, user.deleted
+
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 
-// Generate unique device management ID
-function generateDeviceManagementId(): string {
-  return `DM-${Date.now()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
-}
-
-// Store or update user from Clerk
-export const storeUser = mutation({
+// ── Internal: create or update a user record ──────────────────────────────
+// Called by the Clerk webhook HTTP action on user.created and user.updated.
+export const upsert = internalMutation({
   args: {
-    clerkId: v.string(),
-    email: v.string(),
+    clerkId:   v.string(),
+    email:     v.string(),
     firstName: v.optional(v.string()),
-    lastName: v.optional(v.string()),
-    imageUrl: v.optional(v.string()),
+    lastName:  v.optional(v.string()),
+    imageUrl:  v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Check if user already exists
-    const existingUser = await ctx.db
+    const existing = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
-      .first();
+      .unique();
 
-    const now = Date.now();
-
-    if (existingUser) {
-      // Update existing user
-      await ctx.db.patch(existingUser._id, {
-        email: args.email,
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        email:     args.email,
         firstName: args.firstName,
-        lastName: args.lastName,
-        imageUrl: args.imageUrl,
-        lastSignIn: now,
+        lastName:  args.lastName,
+        imageUrl:  args.imageUrl,
+        lastSignIn: Date.now(),
       });
-      return existingUser._id;
+      return existing._id;
     }
 
-    // Create new user with unique device management ID
-    const userId = await ctx.db.insert("users", {
-      clerkId: args.clerkId,
-      email: args.email,
-      firstName: args.firstName,
-      lastName: args.lastName,
-      imageUrl: args.imageUrl,
-      deviceManagementId: generateDeviceManagementId(),
-      createdAt: now,
-      lastSignIn: now,
-    });
+    // New user — generate a stable deviceManagementId (tenant UUID)
+    const deviceManagementId = crypto.randomUUID();
 
-    return userId;
+    return await ctx.db.insert("users", {
+      clerkId:                args.clerkId,
+      email:                  args.email,
+      firstName:              args.firstName,
+      lastName:               args.lastName,
+      imageUrl:               args.imageUrl,
+      deviceManagementId,
+      hasCompletedOnboarding: false,
+      createdAt:              Date.now(),
+      lastSignIn:             Date.now(),
+    });
   },
 });
 
-// Get user by Clerk ID
-export const getUserByClerkId = query({
+// ── Internal: delete a user record ───────────────────────────────────────
+// Called by the Clerk webhook on user.deleted.
+// Note: does not cascade-delete facilities/hubs/circuits.
+// Add cascade logic here if your product requires it.
+export const deleteByClerkId = internalMutation({
   args: { clerkId: v.string() },
   handler: async (ctx, args) => {
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
-      .first();
-    return user;
+      .unique();
+
+    if (user) {
+      await ctx.db.delete(user._id);
+    }
   },
 });
 
-// Get user by device management ID
-export const getUserByDeviceManagementId = query({
-  args: { deviceManagementId: v.string() },
+// ── Internal: look up a user by Clerk ID ──────────────────────────────────
+export const getByClerkId = internalQuery({
+  args: { clerkId: v.string() },
   handler: async (ctx, args) => {
-    const user = await ctx.db
+    return await ctx.db
       .query("users")
-      .withIndex("by_device_management_id", (q) =>
-        q.eq("deviceManagementId", args.deviceManagementId)
-      )
-      .first();
-    return user;
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .unique();
   },
 });
 
-// Get current user (requires authentication)
-export const getCurrentUser = query({
+// ── Public: get the currently authenticated user ──────────────────────────
+// Returns null if unauthenticated. Wrap in <Authenticated> on the frontend.
+export const getMe = query({
   args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      return null;
-    }
+    if (!identity) return null;
+
+    return await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+  },
+});
+
+// ── Public: check onboarding status ──────────────────────────────────────
+export const getOnboardingStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .first();
+      .unique();
 
-    return user;
+    if (!user) return null;
+
+    return {
+      hasCompletedOnboarding: user.hasCompletedOnboarding ?? false,
+      activeFacilityId:       user.activeFacilityId ?? null,
+      deviceManagementId:     user.deviceManagementId,
+    };
   },
 });
 
-// Get current user by clerkId passed from client.
-// Used because auth.config.ts has no providers configured — ctx.auth.getUserIdentity()
-// always returns null in this setup, so we accept clerkId explicitly from the client.
+// ── Public: ensure user record exists after sign-in ───────────────────────
+// Handles the timing gap between Clerk sign-in and the webhook firing.
+// Safe to call on every app load — patches lastSignIn if user already exists.
+export const storeUser = mutation({
+  args: {
+    clerkId:   v.optional(v.string()),
+    email:     v.optional(v.string()),
+    firstName: v.optional(v.string()),
+    lastName:  v.optional(v.string()),
+    imageUrl:  v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const clerkId = identity?.subject ?? args.clerkId;
+    if (!clerkId) return null;
+
+    const email     = identity?.email      ?? args.email     ?? "";
+    const firstName = identity?.givenName  ?? args.firstName;
+    const lastName  = identity?.familyName ?? args.lastName;
+    const imageUrl  = identity?.pictureUrl ?? args.imageUrl;
+
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, { lastSignIn: Date.now(), email, firstName, lastName, imageUrl });
+      return existing._id;
+    }
+
+    const deviceManagementId = crypto.randomUUID();
+    return await ctx.db.insert("users", {
+      clerkId,
+      email,
+      firstName,
+      lastName,
+      imageUrl,
+      deviceManagementId,
+      hasCompletedOnboarding: false,
+      createdAt:              Date.now(),
+      lastSignIn:             Date.now(),
+    });
+  },
+});
+
+// ── Public: get user by Clerk ID ──────────────────────────────────────────
+// Verifies the requested clerkId matches the authenticated session before
+// returning data — prevents cross-user access.
 export const getCurrentUserByClerkId = query({
   args: { clerkId: v.string() },
   handler: async (ctx, args) => {
-    if (!args.clerkId) return null;
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity || identity.subject !== args.clerkId) return null;
+
     return await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
-      .first();
+      .unique();
   },
 });

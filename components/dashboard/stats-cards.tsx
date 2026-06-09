@@ -1,24 +1,24 @@
 "use client";
 
 import { Zap, Activity, AlertTriangle, Gauge } from "lucide-react";
-import { useFacility } from "@/hooks/use-facility";
-import { getRoomMockPower } from "@/lib/room-utils";
+import { useHubData } from "@/hooks/use-hub-data";
 
 export function StatsCards() {
-  const { rooms } = useFacility();
+  const { hubState, circuitStates, activeHub } = useHubData();
 
-  const totalW = rooms.reduce((sum, r) => sum + getRoomMockPower(r).power, 0);
-  const activeCircuits = rooms.filter((r) => getRoomMockPower(r).power > 0).length;
-  const anomalies = rooms.filter((r) => getRoomMockPower(r).status === "ANOMALY");
-  const voltage = 229 + Math.sin(Date.now() / 10000) * 2;
+  const totalKw = hubState ? (hubState.totalPowerW / 1000).toFixed(2) : "—";
+  const voltage = hubState ? hubState.voltage.toFixed(1) : "—";
+  const activeCircuits = circuitStates.filter((c) => c.powerW > 0).length;
+  const totalCircuits = circuitStates.length || activeHub?.channelCount || 0;
+  const anomalyCount = 0;
 
   const cards = [
     {
       eyebrow: "Real-time · ESP32",
       label: "Total Load",
-      value: (totalW / 1000).toFixed(2),
+      value: totalKw,
       unit: "kW",
-      sub: `${rooms.length} circuits monitored`,
+      sub: `${totalCircuits} circuits monitored`,
       icon: Zap,
       color: "#18e39a",
       glow: "rgba(24,227,154,0.35)",
@@ -26,19 +26,24 @@ export function StatsCards() {
     {
       eyebrow: "True-RMS · Mains",
       label: "Mains Voltage",
-      value: voltage.toFixed(1),
-      unit: "V",
-      sub: "within ±5% nominal",
+      value: voltage,
+      unit: hubState ? "V" : "",
+      sub: hubState ? "within ±5% nominal" : "waiting for hub",
       icon: Gauge,
       color: "#38bdf8",
       glow: "rgba(56,189,248,0.35)",
     },
     {
-      eyebrow: "Breaker array · CH1–16",
+      eyebrow: `Breaker array · CH1–${totalCircuits || "?"}`,
       label: "Active Circuits",
       value: String(activeCircuits),
-      unit: `/ ${rooms.length}`,
-      sub: activeCircuits === rooms.length ? "All circuits live" : `${rooms.length - activeCircuits} idle`,
+      unit: `/ ${totalCircuits}`,
+      sub:
+        activeCircuits === totalCircuits && totalCircuits > 0
+          ? "All circuits live"
+          : totalCircuits > 0
+          ? `${totalCircuits - activeCircuits} idle`
+          : "no data",
       icon: Activity,
       color: "#18e39a",
       glow: "rgba(24,227,154,0.35)",
@@ -46,12 +51,12 @@ export function StatsCards() {
     {
       eyebrow: "SageMaker · live",
       label: "Anomaly Status",
-      value: anomalies.length === 0 ? "Clear" : String(anomalies.length),
-      unit: anomalies.length === 0 ? "" : " alert" + (anomalies.length > 1 ? "s" : ""),
-      sub: anomalies.length === 0 ? "All circuits nominal" : anomalies[0],
+      value: anomalyCount === 0 ? "Clear" : String(anomalyCount),
+      unit: anomalyCount === 0 ? "" : " alert" + (anomalyCount > 1 ? "s" : ""),
+      sub: anomalyCount === 0 ? "All circuits nominal" : `${anomalyCount} alert(s)`,
       icon: AlertTriangle,
-      color: anomalies.length > 0 ? "rgba(255,107,107,1)" : "#18e39a",
-      glow: anomalies.length > 0 ? "rgba(255,107,107,0.35)" : "rgba(24,227,154,0.35)",
+      color: anomalyCount > 0 ? "rgba(255,107,107,1)" : "#18e39a",
+      glow: anomalyCount > 0 ? "rgba(255,107,107,0.35)" : "rgba(24,227,154,0.35)",
     },
   ];
 

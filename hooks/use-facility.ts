@@ -12,30 +12,32 @@ export function useFacility() {
     user?.id ? { clerkId: user.id } : "skip"
   );
 
+  const facilities = useQuery(
+    api.onboarding.listFacilities,
+    user?.id ? { clerkId: user.id } : "skip"
+  );
+
   const hubs = useQuery(
     api.onboarding.listHubs,
     user?.id ? { clerkId: user.id } : "skip"
   );
 
-  const activeHub =
-    hubs && currentUser?.activeFacilityId
-      ? hubs.find((h) => h.serialNumber === currentUser.activeFacilityId) ?? hubs[0]
-      : hubs?.[0] ?? null;
+  const activeFacility =
+    facilities?.find((f) => f._id === currentUser?.activeFacilityId) ??
+    facilities?.[0] ??
+    null;
 
-  const rooms: string[] = (() => {
-    if (!activeHub?.facilityRooms) return [];
-    try {
-      return JSON.parse(activeHub.facilityRooms);
-    } catch {
-      return [];
-    }
-  })();
+  const activeHub = hubs?.[0] ?? null;
 
   return {
     activeHub,
-    facilityName: activeHub?.facilityName ?? null,
-    facilityType: activeHub?.facilityType ?? null,
-    rooms,
-    isLoading: currentUser === undefined || hubs === undefined,
+    activeFacility,
+    facilityName: activeFacility?.name ?? null,
+    facilityType: activeFacility?.type ?? null,
+    rooms: activeFacility?.rooms ?? [],
+    isLoading:
+      currentUser === undefined ||
+      hubs === undefined ||
+      facilities === undefined,
   };
 }

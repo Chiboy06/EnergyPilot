@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Activity, Bell, MoreHorizontal } from "lucide-react";
+import { LayoutDashboard, Activity, TrendingUp, BarChart3, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { href: "/dashboard",          icon: LayoutDashboard, label: "Home"     },
-  { href: "/dashboard/circuits", icon: Activity,        label: "Circuits" },
-  { href: "/dashboard/alerts",   icon: Bell,            label: "Alerts"   },
-  { href: "/dashboard/more",     icon: MoreHorizontal,  label: "More"     },
+  { href: "/dashboard",             icon: LayoutDashboard, label: "Overview"    },
+  { href: "/dashboard/circuits",    icon: Activity,        label: "Circuits"    },
+  { href: "/dashboard/predictions", icon: TrendingUp,      label: "Predictions" },
+  { href: "/dashboard/analytics",   icon: BarChart3,       label: "Analytics"   },
+  { href: "/dashboard/settings",    icon: Settings,        label: "Settings"    },
 ] as const;
 
 export function MobileBottomTabBar() {
@@ -45,7 +46,7 @@ export function MobileBottomTabBar() {
               key={href}
               href={href}
               className={cn(
-                "flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-colors duration-200",
+                "flex flex-col items-center gap-1 px-2 py-1.5 rounded-xl transition-colors duration-200",
                 isActive ? "text-emerald-400" : "text-slate-500"
               )}
             >

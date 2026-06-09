@@ -4,16 +4,20 @@ export const dynamic = "force-dynamic";
 
 import { CircuitGrid } from "@/components/dashboard/circuit-grid"
 import { useFacility } from '@/hooks/use-facility'
-import { getRoomMockPower } from '@/lib/room-utils'
+import { useHubData } from '@/hooks/use-hub-data'
 import { useState } from 'react'
+
+const VOLTAGE = 220;
+const POWER_FACTOR = 0.85;
 
 export default function CircuitsPage() {
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'issues'>('all')
-  const { rooms, facilityName, facilityType } = useFacility()
+  const { facilityName, facilityType } = useFacility()
+  const { circuitStates, breakerCapacity } = useHubData()
 
-  const issueCount = rooms.filter((r) => {
-    const { status } = getRoomMockPower(r)
-    return status === 'ANOMALY' || status === 'HIGH LOAD'
+  const issueCount = circuitStates.filter((c) => {
+    const maxW = (c.maxAmps ?? breakerCapacity) * VOLTAGE * POWER_FACTOR
+    return maxW > 0 && (c.powerW / maxW) * 100 >= 85
   }).length
 
   return (

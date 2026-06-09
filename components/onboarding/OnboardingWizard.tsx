@@ -19,8 +19,6 @@ import {
   Loader2,
   Wifi,
   WifiOff,
-  Plus,
-  X,
   Activity,
   TrendingUp,
   Power,
@@ -28,57 +26,6 @@ import {
   ChevronRight,
 } from "lucide-react";
 
-// ─── Facility type room presets ───────────────────────────────────────────────
-const ROOM_PRESETS: Record<string, string[]> = {
-  residential: [
-    "Kitchen",
-    "Parlour",
-    "Master Bedroom",
-    "Bedroom 2",
-    "Bedroom 3",
-    "Bathroom",
-    "Garage",
-    "Laundry Room",
-    "Home Office",
-    "Dining Room",
-  ],
-  office: [
-    "Reception",
-    "Open Office",
-    "Conference Room A",
-    "Conference Room B",
-    "Manager's Office",
-    "Server Room",
-    "Break Room",
-    "Storage Room",
-    "Board Room",
-    "Lobby",
-  ],
-  institution: [
-    "Dean's Office",
-    "Deputy Dean's Office",
-    "Secretary's Office",
-    "Faculty Board Room",
-    "Lecture Hall A",
-    "Lecture Hall B",
-    "Staff Room",
-    "Computer Lab",
-    "Library",
-    "Administrative Office",
-  ],
-  industrial: [
-    "Production Floor",
-    "Control Room",
-    "Storage Bay",
-    "Loading Dock",
-    "Maintenance Workshop",
-    "Quality Control",
-    "Admin Office",
-    "Generator Room",
-    "Compressor Room",
-    "Packaging Area",
-  ],
-};
 
 const FACILITY_TYPES = [
   { id: "residential", label: "Residential", sub: "House, Apartment, Condo", icon: Home },
@@ -190,14 +137,18 @@ function StepFacility({
   );
 }
 
+const CHANNEL_OPTIONS = [8, 16, 24, 32] as const;
+
 // ─── Step 2: Connect Hub ──────────────────────────────────────────────────────
 function StepConnectHub({
   serial, setSerial,
   hubName, setHubName,
+  channelCount, setChannelCount,
   onBack, onNext,
 }: {
   serial: string; setSerial: (v: string) => void;
   hubName: string; setHubName: (v: string) => void;
+  channelCount: 8 | 16 | 24 | 32; setChannelCount: (v: 8 | 16 | 24 | 32) => void;
   onBack: () => void; onNext: () => void;
 }) {
   const [scanning, setScanning] = useState(true);
@@ -245,23 +196,48 @@ function StepConnectHub({
 
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-white mb-1.5">Device Serial Number</label>
+          <label className="block text-sm font-medium text-white mb-1.5">Device Serial Number (MAC)</label>
           <Input
             value={serial}
             onChange={(e) => setSerial(e.target.value.toUpperCase())}
-            placeholder="VS-2024-XXXX"
+            placeholder="EC:E3:34:66:98:3C"
             className="bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500 font-mono"
           />
-          <p className="text-xs text-emerald-400 mt-1">Where can I find this?</p>
+          <p className="text-xs text-slate-500 mt-1">Found on the label on the back of your Hub.</p>
         </div>
         <div>
           <label className="block text-sm font-medium text-white mb-1.5">Hub Name</label>
           <Input
             value={hubName}
             onChange={(e) => setHubName(e.target.value)}
-            placeholder="e.g. Main Hub"
+            placeholder="e.g. Main Distribution Block"
             className="bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500"
           />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-white mb-2">
+            Number of Channels
+            <span className="ml-2 text-xs text-slate-500 font-normal">— breaker slots in your distribution block</span>
+          </label>
+          <div className="grid grid-cols-4 gap-2">
+            {CHANNEL_OPTIONS.map((n) => (
+              <button
+                key={n}
+                onClick={() => setChannelCount(n)}
+                className={cn(
+                  "py-3 rounded-xl border text-center font-semibold text-sm transition-all",
+                  channelCount === n
+                    ? "border-emerald-500 bg-emerald-500/10 text-emerald-300"
+                    : "border-slate-700 bg-slate-800/40 text-slate-400 hover:border-slate-600 hover:text-white"
+                )}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-slate-500 mt-1.5">
+            Circuit names can be assigned from the dashboard after setup.
+          </p>
         </div>
       </div>
 
@@ -277,119 +253,6 @@ function StepConnectHub({
   );
 }
 
-// ─── Step 3: Circuit / Room Configuration ────────────────────────────────────
-function StepRooms({
-  facilityType,
-  rooms, setRooms,
-  onBack, onNext,
-}: {
-  facilityType: FacilityType;
-  rooms: string[]; setRooms: (r: string[]) => void;
-  onBack: () => void; onNext: () => void;
-}) {
-  const [customInput, setCustomInput] = useState("");
-  const presets = ROOM_PRESETS[facilityType] ?? [];
-
-  const toggle = (name: string) => {
-    setRooms(
-      rooms.includes(name) ? rooms.filter((r) => r !== name) : [...rooms, name]
-    );
-  };
-
-  const addCustom = () => {
-    const trimmed = customInput.trim();
-    if (trimmed && !rooms.includes(trimmed)) {
-      setRooms([...rooms, trimmed]);
-    }
-    setCustomInput("");
-  };
-
-  const remove = (name: string) => setRooms(rooms.filter((r) => r !== name));
-
-  const canProceed = rooms.length > 0;
-
-  return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-white">Configure Rooms</h1>
-        <p className="text-slate-400 mt-2 text-sm">
-          Select the rooms or zones your Hub will monitor.
-        </p>
-      </div>
-
-      <div>
-        <p className="text-xs text-slate-500 uppercase tracking-widest mb-3">Suggested for your facility</p>
-        <div className="flex flex-wrap gap-2">
-          {presets.map((name) => {
-            const selected = rooms.includes(name);
-            return (
-              <button
-                key={name}
-                onClick={() => toggle(name)}
-                className={cn(
-                  "px-3 py-1.5 rounded-full text-sm border transition-all",
-                  selected
-                    ? "bg-emerald-500/20 border-emerald-500 text-emerald-300"
-                    : "bg-slate-800/60 border-slate-700 text-slate-400 hover:border-slate-500 hover:text-white"
-                )}
-              >
-                {selected && "✓ "}{name}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Custom room input */}
-      <div className="flex gap-2">
-        <Input
-          value={customInput}
-          onChange={(e) => setCustomInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && addCustom()}
-          placeholder="Add custom room..."
-          className="bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500"
-        />
-        <Button
-          onClick={addCustom}
-          disabled={!customInput.trim()}
-          variant="outline"
-          className="border-slate-700 text-slate-300 hover:bg-slate-800 shrink-0"
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
-      </div>
-
-      {/* Selected rooms */}
-      {rooms.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs text-slate-500 uppercase tracking-widest">Selected ({rooms.length})</p>
-          <div className="flex flex-wrap gap-2">
-            {rooms.map((room) => (
-              <span
-                key={room}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-sm"
-              >
-                {room}
-                <button onClick={() => remove(room)} className="hover:text-red-400 transition-colors">
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="flex gap-3">
-        <Button variant="outline" onClick={onBack} className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800 h-11">
-          Back
-        </Button>
-        <Button onClick={onNext} disabled={!canProceed} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-black font-semibold h-11">
-          Continue
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 // ─── Step 4: Provisioning ─────────────────────────────────────────────────────
 const PROVISION_STEPS = [
@@ -741,15 +604,14 @@ export function OnboardingWizard({ isAddDevice = false }: { isAddDevice?: boolea
   // reactive redirect so the provisioning animation can finish first.
   const [justCompleted, setJustCompleted] = useState(false);
 
-  // Step 1
+  // Step 0
   const [facilityName, setFacilityName] = useState("");
   const [facilityType, setFacilityType] = useState<FacilityType | "">("");
   const [breakerCapacity, setBreakerCapacity] = useState("");
-  // Step 2
+  // Step 1
   const [serial, setSerial] = useState("");
   const [hubName, setHubName] = useState("");
-  // Step 3
-  const [rooms, setRooms] = useState<string[]>([]);
+  const [channelCount, setChannelCount] = useState<8 | 16 | 24 | 32>(8);
 
   // Redirect already-onboarded users away — UNLESS they're intentionally
   // adding a new device (isAddDevice=true) or just completed this session.
@@ -769,26 +631,26 @@ export function OnboardingWizard({ isAddDevice = false }: { isAddDevice?: boolea
   }
 
   // Show the 3-slide intro before the setup steps (skip for addDevice flow)
-  if (showIntro) {
-    return <IntroSlides onDone={() => setShowIntro(false)} />;
-  }
+  // if (showIntro) {
+  //   return <IntroSlides onDone={() => setShowIntro(false)} />;
+  // }
 
   const handleProvision = async () => {
     setError(null);
     setSubmitting(true);
     try {
       await completeOnboarding({
-        clerkId: user!.id,
-        serialNumber: serial,
+        clerkId:         user!.id,
+        serialNumber:    serial,
         hubName,
         facilityName,
-        facilityType,
-        facilityRooms: JSON.stringify(rooms),
+        facilityType:    facilityType as FacilityType,
+        channelCount,
         breakerCapacity: Number(breakerCapacity),
       });
       // Set flag BEFORE step change so the useEffect above doesn't redirect
       setJustCompleted(true);
-      setStep(3);
+      setStep(2);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Provisioning failed. Please try again.");
     } finally {
@@ -809,7 +671,7 @@ export function OnboardingWizard({ isAddDevice = false }: { isAddDevice?: boolea
       {/* Wizard card */}
       <div className="flex-1 flex items-center justify-center p-4 py-8">
         <div className="w-full max-w-lg bg-[#161b22] border border-white/5 rounded-2xl p-8 shadow-2xl">
-          <StepDots current={step} total={4} />
+          <StepDots current={step} total={3} />
 
           {error && (
             <div className="mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
@@ -829,19 +691,12 @@ export function OnboardingWizard({ isAddDevice = false }: { isAddDevice?: boolea
             <StepConnectHub
               serial={serial} setSerial={setSerial}
               hubName={hubName} setHubName={setHubName}
+              channelCount={channelCount} setChannelCount={setChannelCount}
               onBack={() => setStep(0)}
-              onNext={() => setStep(2)}
-            />
-          )}
-          {step === 2 && (
-            <StepRooms
-              facilityType={facilityType as FacilityType}
-              rooms={rooms} setRooms={setRooms}
-              onBack={() => setStep(1)}
               onNext={handleProvision}
             />
           )}
-          {step === 3 && (
+          {step === 2 && (
             <StepProvisioning
               serial={serial}
               onComplete={() => router.push(isAddDevice ? "/dashboard/settings" : "/notifications-setup")}

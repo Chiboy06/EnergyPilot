@@ -7,8 +7,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { DashboardSidebar } from "./sidebar";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { useFacility } from "@/hooks/use-facility";
-import { getRoomMockPower } from "@/lib/room-utils";
+import { useHubData } from "@/hooks/use-hub-data";
 
 const ROUTE_LABELS: Record<string, string> = {
   "/dashboard":             "Overview",
@@ -24,14 +23,12 @@ export function DashboardHeader() {
   const { user } = useUser();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { rooms } = useFacility();
+  const { hubState } = useHubData();
 
   const routeLabel = ROUTE_LABELS[pathname] ?? "Dashboard";
 
-  const totalW = rooms.reduce((sum, r) => sum + getRoomMockPower(r).power, 0);
-  const totalKw = (totalW / 1000).toFixed(2);
-
-  const anomalyCount = rooms.filter((r) => getRoomMockPower(r).status === "ANOMALY").length;
+  const totalKw = hubState ? (hubState.totalPowerW / 1000).toFixed(2) : "—";
+  const anomalyCount = 0;
 
   const initials = [user?.firstName?.[0], user?.lastName?.[0]]
     .filter(Boolean).join("").toUpperCase() || "OP";

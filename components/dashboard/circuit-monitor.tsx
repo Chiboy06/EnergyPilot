@@ -1,12 +1,31 @@
 "use client";
 
-import { Power, Loader2 } from "lucide-react";
+import { Power, Loader2, Zap, Wind, Lightbulb, Car, Cpu } from "lucide-react";
+import { LucideIcon } from "lucide-react";
 import Link from "next/link";
-import { useFacility } from "@/hooks/use-facility";
-import { getRoomIcon, getRoomMockPower } from "@/lib/room-utils";
+import { useHubData } from "@/hooks/use-hub-data";
+
+const VOLTAGE = 220;
+const POWER_FACTOR = 0.85;
+
+function getLoadTypeIcon(loadType?: string): LucideIcon {
+  switch (loadType) {
+    case "lighting":   return Lightbulb;
+    case "hvac":       return Wind;
+    case "ev_charger": return Car;
+    case "general":    return Cpu;
+    default:           return Zap;
+  }
+}
+
+function getCircuitStatus(percentage: number) {
+  if (percentage === 0)  return { label: "OFFLINE",   color: "rgba(88,105,128,0.8)" };
+  if (percentage >= 85)  return { label: "HIGH LOAD", color: "rgba(255,181,71,1)" };
+  return { label: "ACTIVE", color: "#18e39a" };
+}
 
 export function CircuitMonitor() {
-  const { rooms, facilityName, isLoading } = useFacility();
+  const { circuitStates, breakerCapacity, facilityName, isLoading, relayStateMap, sendCommand, activeHub } = useHubData();
 
   return (
     <div>
@@ -30,43 +49,41 @@ export function CircuitMonitor() {
         <div className="flex items-center justify-center py-16">
           <Loader2 size={22} className="text-emerald-400 animate-spin" />
         </div>
-      ) : rooms.length === 0 ? (
+      ) : circuitStates.length === 0 ? (
         <div className="text-center py-12 text-[13px]" style={{ color: "rgba(100,116,139,0.8)" }}>
-          No rooms configured.{" "}
+          No circuits found.{" "}
           <Link href="/dashboard/settings" style={{ color: "#18e39a" }}>
-            Add facility in Settings
+            Check device status
           </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {rooms.slice(0, 6).map((room) => {
-            const { power, percentage, status, statusColor } = getRoomMockPower(room);
-            const Icon = getRoomIcon(room);
-            const isAnomaly = status === "ANOMALY";
-            const barColor = isAnomaly ? "#ff6b6b" : percentage > 80 ? "#ffb547" : "#18e39a";
+          {circuitStates.slice(0, 6).map((circuit) => {
+            const maxW = (circuit.maxAmps ?? breakerCapacity) * VOLTAGE * POWER_FACTOR;
+            const percentage = maxW > 0 ? Math.min(100, Math.round((circuit.powerW / maxW) * 100)) : 0;
+            const { label: status, color: statusColor } = getCircuitStatus(percentage);
+            const barColor = percentage >= 85 ? "#ffb547" : "#18e39a";
+            const Icon = getLoadTypeIcon(circuit.loadType);
+            const isOn = relayStateMap[circuit.channelIndex] ?? false;
 
             return (
-              <div
-                key={room}
-                className="glass-card p-4 eg-anim-slide-up"
-                style={isAnomaly ? { borderColor: "rgba(255,107,107,0.35)" } : undefined}
-              >
+              <div key={circuit._id} className="glass-card p-4 eg-anim-slide-up">
                 <div className="flex items-center justify-between mb-3">
                   <div
                     className="w-9 h-9 rounded-[10px] grid place-items-center flex-none"
-                    style={{
-                      background: isAnomaly ? "rgba(255,107,107,0.14)" : "rgba(24,227,154,0.10)",
-                      color: isAnomaly ? "rgba(255,107,107,1)" : "#18e39a",
-                    }}
+                    style={{ background: "rgba(24,227,154,0.10)", color: "#18e39a" }}
                   >
                     <Icon size={17} />
                   </div>
                   <button
+                    onClick={() => {
+                      if (activeHub) sendCommand({ hubId: activeHub._id, relayNum: circuit.channelIndex, state: !isOn });
+                    }}
                     className="w-8 h-8 grid place-items-center rounded-[9px] transition-colors"
                     style={{
-                      background: "rgba(24,227,154,0.08)",
-                      border: "1px solid rgba(24,227,154,0.18)",
-                      color: "#18e39a",
+                      background: isOn ? "rgba(24,227,154,0.15)" : "rgba(239,68,68,0.10)",
+                      border: isOn ? "1px solid rgba(24,227,154,0.3)" : "1px solid rgba(239,68,68,0.25)",
+                      color: isOn ? "#18e39a" : "#f87171",
                     }}
                   >
                     <Power size={14} />
@@ -74,9 +91,9 @@ export function CircuitMonitor() {
                 </div>
 
                 <div className="mb-3">
-                  <p className="text-[13px] font-medium text-white leading-tight">{room}</p>
+                  <p className="text-[13px] font-medium text-white leading-tight">{circuit.name}</p>
                   <p className="font-mono font-bold text-[22px] text-white leading-tight mt-0.5">
-                    {power.toLocaleString()}{" "}
+                    {Math.round(circuit.powerW).toLocaleString()}{" "}
                     <span className="text-[13px] font-normal" style={{ color: "rgba(100,116,139,0.9)" }}>W</span>
                   </p>
                 </div>
@@ -89,9 +106,7 @@ export function CircuitMonitor() {
                     />
                   </div>
                   <div className="flex items-center justify-between text-[11.5px]">
-                    <span style={{ color: isAnomaly ? "rgba(255,107,107,1)" : "rgba(148,163,184,0.7)" }}>
-                      {status}
-                    </span>
+                    <span style={{ color: statusColor }}>{status}</span>
                     <span className="font-mono" style={{ color: "rgba(100,116,139,0.8)" }}>{percentage}%</span>
                   </div>
                 </div>
