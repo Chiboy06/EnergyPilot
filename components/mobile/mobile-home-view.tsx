@@ -1,7 +1,7 @@
 "use client";
 
-import { useFacility } from "@/hooks/use-facility";
-import { getRoomMockPower, getRoomIcon } from "@/lib/room-utils";
+import { useHubData } from "@/hooks/use-hub-data";
+import { getRoomIcon } from "@/lib/room-utils";
 import { useUser } from "@clerk/nextjs";
 import { Activity, AlertTriangle, Zap } from "lucide-react";
 import { useMemo, useEffect, useRef, useState } from "react";
@@ -128,35 +128,6 @@ function useEased(target: number, ms = 700) {
   return val;
 }
 
-// ── simulated live telemetry ───────────────────────────────────────────────────
-function useLiveTelemetry(rooms: string[]) {
-  const base = useMemo(
-    () => rooms.map((r) => getRoomMockPower(r)),
-    [rooms]
-  );
-
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 5000);
-    return () => clearInterval(id);
-  }, []);
-
-  return useMemo(() => {
-    const noise = (seed: number) => 0.92 + 0.16 * Math.sin(tick * 1.7 + seed);
-    const circuits = rooms.map((name, i) => ({
-      name,
-      group: base[i].status,
-      power: Math.round(base[i].power * noise(i * 0.4)),
-      percentage: Math.min(100, Math.round(base[i].percentage * noise(i * 0.6))),
-      status: base[i].status,
-    }));
-    const totalKw = circuits.reduce((s, c) => s + c.power, 0) / 1000;
-    const anomalies = circuits.filter((c) => c.status === "ANOMALY");
-    const active = circuits.filter((c) => c.status !== "OFFLINE");
-    return { circuits, totalKw, anomalies, active };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick, base, rooms]);
-}
 
 // ── generate sparkline history ─────────────────────────────────────────────────
 function useSparkHistory(value: number, len = 18) {
@@ -168,14 +139,47 @@ function useSparkHistory(value: number, len = 18) {
   return hist.current.length >= 2 ? [...hist.current] : Array(2).fill(value);
 }
 
+const BREAKER_V = 220;
+const BREAKER_PF = 0.85;
+
 // ── main component ─────────────────────────────────────────────────────────────
 export function MobileHomeView() {
   const { user } = useUser();
-  const { rooms, facilityName, isLoading } = useFacility();
-  const { circuits, totalKw, anomalies, active } = useLiveTelemetry(rooms);
+  const {
+    hubState,
+    circuitStates,
+    hubReadings,
+    relayStateMap,
+    breakerCapacity,
+    facilityName,
+    isLoading,
+    hasHub,
+  } = useHubData();
 
+  const totalKw = (hubState?.totalPowerW ?? 0) / 1000;
   const easedTotal = useEased(totalKw);
-  const sparkData = useSparkHistory(totalKw);
+
+  // Sparkline from real hub readings (newest-first → reverse for chronological)
+  const readingHistory = useMemo(
+    () => [...(hubReadings ?? [])].reverse().map((r) => r.totalPowerW / 1000),
+    [hubReadings]
+  );
+  const fallbackSparkData = useSparkHistory(totalKw);
+  const sparkData = readingHistory.length >= 2 ? readingHistory : fallbackSparkData;
+
+  // Map circuit states to display shape
+  const circuits = useMemo(() => {
+    const maxW = breakerCapacity * BREAKER_V * BREAKER_PF;
+    return circuitStates.map((c) => {
+      const on = relayStateMap[c.channelIndex] ?? true;
+      const pct = maxW > 0 ? Math.min(100, Math.round((c.powerW / maxW) * 100)) : 0;
+      const status = !on ? "OFFLINE" : pct >= 88 ? "HIGH LOAD" : "NOMINAL";
+      return { name: c.name, power: c.powerW, percentage: pct, status, on };
+    });
+  }, [circuitStates, relayStateMap, breakerCapacity]);
+
+  const anomalies = useMemo(() => circuits.filter((c) => c.status === "HIGH LOAD"), [circuits]);
+  const active    = useMemo(() => circuits.filter((c) => c.on), [circuits]);
 
   const top4 = useMemo(
     () => [...circuits].sort((a, b) => b.power - a.power).slice(0, 4),

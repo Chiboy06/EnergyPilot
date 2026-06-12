@@ -29,6 +29,8 @@ export default defineSchema({
     ),
     breakerCapacity: v.optional(v.number()),
     rooms: v.optional(v.array(v.string())),
+    tariffPerKwh:   v.optional(v.number()),  // cost per kWh in local currency (e.g. NGN 68)
+    tariffCurrency: v.optional(v.string()),  // "NGN" default
     createdAt: v.number(),
   }).index("by_user", ["userId"]),
 
@@ -138,4 +140,77 @@ relayStates: defineTable({
     timestamp: v.number(),
     receivedAt: v.number(),
   }).index("by_circuit_time", ["circuitId", "timestamp"]),
+
+  userPreferences: defineTable({
+    userId:              v.id("users"),
+    loadWarningPct:      v.number(),
+    autoCutoffPct:       v.number(),
+    pushEnabled:         v.boolean(),
+    emailEnabled:        v.boolean(),
+    notifyHighLoad:      v.boolean(),
+    notifyVoltageHigh:   v.boolean(),
+    notifyVoltageLow:    v.boolean(),
+    notifyCircuitOverload: v.boolean(),
+    currency:            v.string(),
+    timezone:            v.string(),
+    displayName:         v.optional(v.string()),
+    apiKey:              v.optional(v.string()),
+    geminiApiKey:        v.optional(v.string()),
+    updatedAt:           v.number(),
+  }).index("by_user", ["userId"]),
+
+  anomalies: defineTable({
+    hubId:      v.id("hubs"),
+    userId:     v.id("users"),
+    circuitId:  v.optional(v.id("circuits")),
+    type: v.union(
+      v.literal("high_load"),
+      v.literal("circuit_overload"),
+      v.literal("voltage_high"),
+      v.literal("voltage_low"),
+      v.literal("zero_voltage_with_load"),
+    ),
+    severity: v.union(
+      v.literal("warning"),
+      v.literal("critical"),
+    ),
+    message:    v.string(),
+    value:      v.number(),
+    threshold:  v.number(),
+    resolvedAt: v.optional(v.number()),
+    timestamp:  v.number(),
+  })
+    .index("by_hub_time",       ["hubId",  "timestamp"])
+    .index("by_user_time",      ["userId", "timestamp"])
+    .index("by_hub_unresolved", ["hubId",  "resolvedAt"]),
+
+  forecasts: defineTable({
+    hubId:        v.id("hubs"),
+    userId:       v.id("users"),
+    generatedAt:  v.number(),
+    forecastType: v.union(
+      v.literal("moving_average"),
+      v.literal("deepar"),
+    ),
+    dataPoints: v.array(v.object({
+      timestamp:      v.number(),
+      predictedKwh:   v.number(),
+      confidenceLow:  v.number(),
+      confidenceHigh: v.number(),
+    })),
+  }).index("by_hub_time", ["hubId", "generatedAt"]),
+
+  aiMessages: defineTable({
+    userId:    v.id("users"),
+    hubId:     v.id("hubs"),
+    role:      v.union(v.literal("user"), v.literal("assistant")),
+    content:   v.string(),
+    relayAction: v.optional(v.object({
+      relayNum:    v.number(),
+      state:       v.boolean(),
+      circuitName: v.string(),
+    })),
+    timestamp: v.number(),
+    ttl:       v.number(),
+  }).index("by_user_hub_time", ["userId", "hubId", "timestamp"]),
 });

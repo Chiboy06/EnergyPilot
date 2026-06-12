@@ -1,6 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery, useMutation } from 'convex/react'
+import { api } from '@/convex/_generated/api'
 import { Slider } from '@/components/ui/slider'
 import { AlertTriangle, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -19,6 +21,7 @@ function ThresholdSlider({
   description,
   value,
   onChange,
+  onCommit,
   color,
 }: {
   icon: React.ElementType
@@ -26,6 +29,7 @@ function ThresholdSlider({
   description: string
   value: number
   onChange: (v: number) => void
+  onCommit: (v: number) => void
   color: 'emerald' | 'red'
 }) {
   return (
@@ -51,11 +55,11 @@ function ThresholdSlider({
         </div>
       </div>
 
-      {/* Track with colored fill */}
       <div className="relative">
         <Slider
           value={[value]}
           onValueChange={(v) => onChange(v[0])}
+          onValueCommit={(v) => onCommit(v[0])}
           min={0}
           max={100}
           step={1}
@@ -68,7 +72,6 @@ function ThresholdSlider({
         </div>
       </div>
 
-      {/* Status badge */}
       <div className={cn(
         'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium',
         value >= 90
@@ -85,8 +88,19 @@ function ThresholdSlider({
 }
 
 export function ThresholdsSettings() {
-  const [globalLoadWarning, setGlobalLoadWarning] = useState(80)
+  const prefs = useQuery(api.preferences.get)
+  const update = useMutation(api.preferences.update)
+
+  const [loadWarning, setLoadWarning] = useState(80)
   const [autoCutoff, setAutoCutoff] = useState(95)
+
+  // Sync local state once prefs load
+  useEffect(() => {
+    if (prefs) {
+      setLoadWarning(prefs.loadWarningPct ?? 80)
+      setAutoCutoff(prefs.autoCutoffPct ?? 95)
+    }
+  }, [prefs?.loadWarningPct, prefs?.autoCutoffPct])
 
   return (
     <div className="space-y-6">
@@ -101,8 +115,9 @@ export function ThresholdsSettings() {
             icon={AlertTriangle}
             label="Global Load Warning"
             description="Alert when any circuit exceeds this percentage of its max capacity."
-            value={globalLoadWarning}
-            onChange={setGlobalLoadWarning}
+            value={loadWarning}
+            onChange={setLoadWarning}
+            onCommit={(v) => update({ loadWarningPct: v })}
             color="emerald"
           />
           <div className="border-t border-slate-800/60 pt-8">
@@ -112,13 +127,13 @@ export function ThresholdsSettings() {
               description="Automatically toggle relay OFF if critical load persists for > 10s."
               value={autoCutoff}
               onChange={setAutoCutoff}
+              onCommit={(v) => update({ autoCutoffPct: v })}
               color="red"
             />
           </div>
         </div>
       </Card>
 
-      {/* Info callout */}
       <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-500/5 border border-amber-500/20">
         <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
         <p className="text-xs text-amber-300/80">

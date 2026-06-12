@@ -8,8 +8,13 @@
  * @module
  */
 
+import type * as ai from "../ai.js";
+import type * as anomalies from "../anomalies.js";
+import type * as crons from "../crons.js";
+import type * as forecasts from "../forecasts.js";
 import type * as http from "../http.js";
 import type * as onboarding from "../onboarding.js";
+import type * as preferences from "../preferences.js";
 import type * as relay from "../relay.js";
 import type * as telemetry from "../telemetry.js";
 import type * as users from "../users.js";
@@ -21,8 +26,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  ai: typeof ai;
+  anomalies: typeof anomalies;
+  crons: typeof crons;
+  forecasts: typeof forecasts;
   http: typeof http;
   onboarding: typeof onboarding;
+  preferences: typeof preferences;
   relay: typeof relay;
   telemetry: typeof telemetry;
   users: typeof users;

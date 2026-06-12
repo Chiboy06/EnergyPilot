@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Activity, TrendingUp, BarChart3, Settings } from "lucide-react";
+import { LayoutDashboard, Activity, TrendingUp, BarChart3, MessageSquare, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -10,6 +10,7 @@ const TABS = [
   { href: "/dashboard/circuits",    icon: Activity,        label: "Circuits"    },
   { href: "/dashboard/predictions", icon: TrendingUp,      label: "Predictions" },
   { href: "/dashboard/analytics",   icon: BarChart3,       label: "Analytics"   },
+  { href: "/dashboard/ai",          icon: MessageSquare,   label: "AI"          },
   { href: "/dashboard/settings",    icon: Settings,        label: "Settings"    },
 ] as const;
 

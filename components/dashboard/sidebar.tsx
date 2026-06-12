@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useClerk } from "@clerk/nextjs";
+import { useHubData } from "@/hooks/use-hub-data";
 import {
   Zap,
   LayoutDashboard,
   Activity,
   TrendingUp,
   BarChart3,
+  MessageSquare,
   Settings,
   Wifi,
 } from "lucide-react";
@@ -18,12 +20,18 @@ const navItems = [
   { href: "/dashboard/circuits",    icon: Activity,        label: "Circuits"    },
   { href: "/dashboard/predictions", icon: TrendingUp,      label: "Predictions" },
   { href: "/dashboard/analytics",   icon: BarChart3,       label: "Analytics"   },
+  { href: "/dashboard/ai",          icon: MessageSquare,   label: "Energenius"  },
   { href: "/dashboard/settings",    icon: Settings,        label: "Settings"    },
 ];
 
 export function DashboardSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { signOut } = useClerk();
+  const { hubState, circuitStates, activeHub } = useHubData();
+
+  const isOnline = hubState?.isOnline ?? false;
+  const activeCircuits = circuitStates.filter(c => c.powerW > 0).length;
+  const totalCircuits = circuitStates.length || (activeHub ? '?' : 0);
 
   return (
     <aside
@@ -93,18 +101,22 @@ export function DashboardSidebar({ onNavigate }: { onNavigate?: () => void }) {
       {/* Edge Mesh widget */}
       <div className="mx-3 mb-3 p-3.5 rounded-[14px]" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
         <div className="flex items-center gap-2 mb-2">
-          <Wifi size={13} style={{ color: "#18e39a" }} />
+          <Wifi size={13} style={{ color: isOnline ? "#18e39a" : "rgba(255,107,107,0.8)" }} />
           <span className="text-[9px] font-semibold tracking-[0.15em] uppercase" style={{ color: "rgba(24,227,154,0.6)" }}>
             Edge Mesh
           </span>
         </div>
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11.5px]" style={{ color: "rgba(148,163,184,0.8)" }}>ESP-NOW</span>
-          <span className="font-mono text-[11.5px]" style={{ color: "#18e39a" }}>0.9 ms</span>
+          <span className="text-[11.5px]" style={{ color: "rgba(148,163,184,0.8)" }}>Hub</span>
+          <span className="font-mono text-[11.5px]" style={{ color: isOnline ? "#18e39a" : "rgba(255,107,107,0.8)" }}>
+            {activeHub ? (isOnline ? "Online" : "Offline") : "—"}
+          </span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-[11.5px]" style={{ color: "rgba(148,163,184,0.8)" }}>Nodes</span>
-          <span className="font-mono text-[11.5px] text-white">3 / 4 up</span>
+          <span className="text-[11.5px]" style={{ color: "rgba(148,163,184,0.8)" }}>Circuits</span>
+          <span className="font-mono text-[11.5px] text-white">
+            {activeHub ? `${activeCircuits} / ${totalCircuits} active` : "—"}
+          </span>
         </div>
       </div>
 

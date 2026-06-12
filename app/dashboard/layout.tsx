@@ -4,6 +4,7 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import { DashboardSidebar } from "@/components/dashboard/sidebar";
 import { DashboardHeader } from "@/components/dashboard/header";
 import { MobileBottomTabBar } from "@/components/mobile/bottom-tab-bar";
+import { EnergeniusWidget } from "@/components/dashboard/energenius-widget";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { useStoreUserEffect } from "@/hooks/use-store-user";
@@ -87,6 +88,9 @@ export default function DashboardLayout({
 
       {/* mobile bottom navigation */}
       <MobileBottomTabBar />
+
+      {/* Energenius floating AI widget */}
+      <EnergeniusWidget />
     </div>
   );
 }
