@@ -32,15 +32,15 @@ const QUICK_PROMPTS = [
 
 function useSpeechRecognition(onResult: (text: string) => void) {
   const [listening, setListening] = useState(false);
-  const recRef = useRef<SpeechRecognition | null>(null);
+  const recRef = useRef<any>(null);
 
   const start = useCallback(() => {
     const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
     if (!SR) return;
-    const rec = new SR() as SpeechRecognition;
+    const rec = new SR() as any;
     rec.lang = "en-US";
     rec.interimResults = false;
-    rec.onresult = (e) => {
+    rec.onresult = (e: any) => {
       const text = e.results[0]?.[0]?.transcript ?? "";
       if (text) onResult(text);
     };
@@ -59,13 +59,13 @@ function useSpeechRecognition(onResult: (text: string) => void) {
   const startWakeWord = useCallback((onWake: () => void) => {
     const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
     if (!SR) return () => {};
-    const rec = new SR() as SpeechRecognition;
+    const rec = new SR() as any;
     rec.lang = "en-US";
     rec.continuous = true;
     rec.interimResults = true;
-    rec.onresult = (e) => {
-      const transcript = Array.from(e.results)
-        .map((r) => r[0].transcript)
+    rec.onresult = (e: any) => {
+      const transcript = Array.from(e.results as any[])
+        .map((r: any) => r[0].transcript)
         .join(" ")
         .toLowerCase();
       if (transcript.includes("energenius")) onWake();
