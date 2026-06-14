@@ -30,9 +30,13 @@ const QUICK_PROMPTS = [
   "Show today's forecast",
 ];
 
+
 // All realistic transcriptions of the made-up word "Energenius" across browsers.
 // Chrome returns "energy genius" or "energenius"; Safari returns "energy genius" or "energize us".
-const WAKE_VARIANTS = ["energenius", "energy genius", "energize us", "energia", "energize"];
+// const WAKE_VARIANTS = ["energenius", "energy genius", "energize us", "energia", "energize"];
+
+// "Energy" is a common word — all STT engines transcribe it reliably, no variants needed.
+const WAKE_VARIANTS = ["energy"];
 
 function isSpeechSupported() {
   return typeof window !== "undefined" &&
@@ -43,9 +47,21 @@ function getSR() {
   return (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition ?? null;
 }
 
+// Speak text aloud using browser TTS. Cancels any in-progress speech first.
+function speak(text: string) {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.lang = "en-NG";
+  utt.rate = 1.05;
+  utt.pitch = 1;
+  window.speechSynthesis.speak(utt);
+}
+
 function useSpeechRecognition(onResult: (text: string) => void, onEnd?: () => void) {
   const [listening, setListening] = useState(false);
-  const recRef = useRef<any>(null);
+  const recRef     = useRef<any>(null); // input mic session
+  const wakeRecRef = useRef<any>(null); // wake word session — separate so input mic never clobbers it
   const manualStopRef = useRef(false);
   const supported = isSpeechSupported();
 
@@ -98,22 +114,25 @@ function useSpeechRecognition(onResult: (text: string) => void, onEnd?: () => vo
           .map((r: any) => r[0].transcript)
           .join(" ")
           .toLowerCase();
-        if (WAKE_VARIANTS.some((v) => transcript.includes(v))) onWake();
+        if (WAKE_VARIANTS.some((v) => transcript.includes(v))) {
+          // Reset the accumulated transcript by restarting the session,
+          // so the same utterance doesn't trigger wake twice.
+          try { rec.abort(); } catch { /* ignore */ }
+          onWake();
+        }
       };
-      // Use setTimeout to let the browser fully reset before restarting.
-      // Calling rec.start() synchronously inside onend throws InvalidStateError.
-      rec.onend = () => { if (!aborted) setTimeout(createSession, 300); };
+      rec.onend = () => { if (!aborted) setTimeout(createSession, 350); };
       rec.onerror = (e: any) => {
         if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-          aborted = true; // mic permission denied — stop loop
+          aborted = true;
         }
       };
       rec.start();
-      recRef.current = rec;
+      wakeRecRef.current = rec; // use separate ref — never conflicts with input mic
     }
 
     createSession();
-    return () => { aborted = true; recRef.current?.abort(); };
+    return () => { aborted = true; wakeRecRef.current?.abort(); };
   }, []);
 
   return { listening, start, stop, startWakeWord, supported };
@@ -239,6 +258,8 @@ export function EnergeniusWidget() {
   const messages = useQuery(api.ai.getMessages, hubId && open ? { hubId } : "skip");
   const sendMessageAction = useAction(api.ai.sendMessage);
 
+  const startMicRef = useRef<() => void>(() => {});
+
   const handleSend = useCallback(async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text || !hubId || sending) return;
@@ -246,7 +267,13 @@ export function EnergeniusWidget() {
     setError(null);
     setSending(true);
     try {
-      await sendMessageAction({ hubId, content: text });
+      const result = await sendMessageAction({ hubId, content: text });
+      if (result?.reply) {
+        speak(result.reply);
+        const words = result.reply.split(/\s+/).length;
+        const delay = Math.min(words * 80 + 500, 8000);
+        setTimeout(() => startMicRef.current(), delay);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to send");
     } finally {
@@ -267,6 +294,8 @@ export function EnergeniusWidget() {
     (text) => setInput(text),
     onSpeechEnd
   );
+  // Keep ref in sync so handleSend can call startMic without a forward-reference
+  startMicRef.current = startMic;
 
   // Auto-enable wake word on mount when STT is supported (always-on like Alexa)
   useEffect(() => {
@@ -280,8 +309,9 @@ export function EnergeniusWidget() {
       setMinimized(false);
       setPulse(true);
       setTimeout(() => setPulse(false), 800);
-      // Auto-start mic immediately after wake — user can speak without tapping
-      setTimeout(() => startMic(), 400);
+      // Speak acknowledgement, then start mic after TTS finishes
+      speak("Yes?");
+      setTimeout(() => startMic(), 600);
     });
     return stop;
   }, [wakeWordOn, startWakeWord, startMic]);
@@ -363,7 +393,7 @@ export function EnergeniusWidget() {
                   : wakeWordOn
                     ? { background: "rgba(24,227,154,0.18)", color: "#18e39a", border: "1px solid rgba(24,227,154,0.3)" }
                     : { background: "rgba(255,255,255,0.06)", color: "rgba(148,163,184,0.6)", border: "1px solid rgba(255,255,255,0.10)" }}
-                title={!sttSupported ? "Voice requires Chrome or Safari" : wakeWordOn ? "Wake word ON — say 'Energenius' to open" : "Enable voice wake word"}
+                title={!sttSupported ? "Voice requires Chrome or Safari" : wakeWordOn ? "Wake word ON — say 'Energy' to open" : "Enable voice wake word"}
               >
                 {wakeWordOn ? <Mic size={10} /> : <MicOff size={10} />}
                 {wakeWordOn ? "Wake on" : "Wake"}
