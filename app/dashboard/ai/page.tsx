@@ -91,7 +91,7 @@ export default function AiPage() {
       {/* Page header */}
       <div className="flex-shrink-0 mb-4">
         <p className="text-[10px] font-semibold tracking-[0.16em] uppercase mb-1.5" style={{ color: "rgba(148,163,184,0.55)" }}>
-          Gemini 3.5 Flash · Function calling
+          Energenius · Function calling
         </p>
         <h1 className="text-2xl font-bold text-white tracking-tight">Energenius</h1>
       </div>

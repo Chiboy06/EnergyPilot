@@ -30,52 +30,93 @@ const QUICK_PROMPTS = [
   "Show today's forecast",
 ];
 
-function useSpeechRecognition(onResult: (text: string) => void) {
+// All realistic transcriptions of the made-up word "Energenius" across browsers.
+// Chrome returns "energy genius" or "energenius"; Safari returns "energy genius" or "energize us".
+const WAKE_VARIANTS = ["energenius", "energy genius", "energize us", "energia", "energize"];
+
+function isSpeechSupported() {
+  return typeof window !== "undefined" &&
+    ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
+}
+
+function getSR() {
+  return (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition ?? null;
+}
+
+function useSpeechRecognition(onResult: (text: string) => void, onEnd?: () => void) {
   const [listening, setListening] = useState(false);
   const recRef = useRef<any>(null);
+  const manualStopRef = useRef(false);
+  const supported = isSpeechSupported();
 
   const start = useCallback(() => {
-    const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    const SR = getSR();
     if (!SR) return;
     const rec = new SR() as any;
-    rec.lang = "en-US";
+    rec.lang = "en-NG";
     rec.interimResults = false;
+    rec.continuous = false;
     rec.onresult = (e: any) => {
       const text = e.results[0]?.[0]?.transcript ?? "";
       if (text) onResult(text);
     };
-    rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
+    rec.onend = () => {
+      setListening(false);
+      if (!manualStopRef.current) onEnd?.();
+      manualStopRef.current = false;
+    };
+    rec.onerror = (e: any) => {
+      if (e.error === "aborted") return;
+      console.error("[STT] error:", e.error);
+      setListening(false);
+    };
     rec.start();
     recRef.current = rec;
+    manualStopRef.current = false;
     setListening(true);
-  }, [onResult]);
+  }, [onResult, onEnd]);
 
   const stop = useCallback(() => {
+    manualStopRef.current = true;
     recRef.current?.stop();
     setListening(false);
   }, []);
 
   const startWakeWord = useCallback((onWake: () => void) => {
-    const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    const SR = getSR();
     if (!SR) return () => {};
-    const rec = new SR() as any;
-    rec.lang = "en-US";
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.onresult = (e: any) => {
-      const transcript = Array.from(e.results as any[])
-        .map((r: any) => r[0].transcript)
-        .join(" ")
-        .toLowerCase();
-      if (transcript.includes("energenius")) onWake();
-    };
-    rec.onend = () => { try { rec.start(); } catch { /* ignore */ } };
-    rec.start();
-    return () => rec.abort();
+    let aborted = false;
+
+    function createSession() {
+      if (aborted) return;
+      const rec = new SR() as any;
+      rec.lang = "en-NG";
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.onresult = (e: any) => {
+        const transcript = Array.from(e.results as any[])
+          .map((r: any) => r[0].transcript)
+          .join(" ")
+          .toLowerCase();
+        if (WAKE_VARIANTS.some((v) => transcript.includes(v))) onWake();
+      };
+      // Use setTimeout to let the browser fully reset before restarting.
+      // Calling rec.start() synchronously inside onend throws InvalidStateError.
+      rec.onend = () => { if (!aborted) setTimeout(createSession, 300); };
+      rec.onerror = (e: any) => {
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+          aborted = true; // mic permission denied — stop loop
+        }
+      };
+      rec.start();
+      recRef.current = rec;
+    }
+
+    createSession();
+    return () => { aborted = true; recRef.current?.abort(); };
   }, []);
 
-  return { listening, start, stop, startWakeWord };
+  return { listening, start, stop, startWakeWord, supported };
 }
 
 export function EnergeniusWidget() {
@@ -183,39 +224,20 @@ export function EnergeniusWidget() {
   // --- Panel placement relative to FAB ---
   const panelStyle = pos ? (() => {
     const pw = Math.min(PANEL_W, window.innerWidth - 24);
-    const ph = Math.min(PANEL_H, window.innerHeight - 80);
+    // Reserve 60px at top (header) + 80px at bottom (mobile browser chrome + tab bar)
+    const ph = Math.min(PANEL_H, window.innerHeight - 140);
     const fabCx = pos.x + FAB_SIZE / 2;
     const left = clamp(fabCx - pw / 2, 12, window.innerWidth - pw - 12);
     const spaceAbove = pos.y - GAP;
     const top = spaceAbove >= ph
       ? spaceAbove - ph
-      : clamp(pos.y + FAB_SIZE + GAP, 12, window.innerHeight - ph - 12);
+      : clamp(pos.y + FAB_SIZE + GAP, 60, window.innerHeight - ph - 80);
     return { left, top, width: pw, height: ph };
   })() : null;
 
   // --- AI ---
   const messages = useQuery(api.ai.getMessages, hubId && open ? { hubId } : "skip");
   const sendMessageAction = useAction(api.ai.sendMessage);
-  const { listening, start: startMic, stop: stopMic, startWakeWord } = useSpeechRecognition(
-    (text) => setInput(text)
-  );
-
-  useEffect(() => {
-    if (!wakeWordOn) return;
-    const stop = startWakeWord(() => {
-      setOpen(true);
-      setMinimized(false);
-      setPulse(true);
-      setTimeout(() => setPulse(false), 800);
-    });
-    return stop;
-  }, [wakeWordOn, startWakeWord]);
-
-  useEffect(() => {
-    if (scrollRef.current && open) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, sending, open]);
 
   const handleSend = useCallback(async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
@@ -231,6 +253,44 @@ export function EnergeniusWidget() {
       setSending(false);
     }
   }, [input, hubId, sending, sendMessageAction]);
+
+  // Stable ref so onSpeechEnd (stable callback) always reads latest input
+  const inputRef = useRef(input);
+  useEffect(() => { inputRef.current = input; }, [input]);
+
+  const onSpeechEnd = useCallback(() => {
+    const text = inputRef.current.trim();
+    if (text) handleSend(text);
+  }, [handleSend]);
+
+  const { listening, start: startMic, stop: stopMic, startWakeWord, supported: sttSupported } = useSpeechRecognition(
+    (text) => setInput(text),
+    onSpeechEnd
+  );
+
+  // Auto-enable wake word on mount when STT is supported (always-on like Alexa)
+  useEffect(() => {
+    if (isSpeechSupported()) setWakeWordOn(true);
+  }, []);
+
+  useEffect(() => {
+    if (!wakeWordOn) return;
+    const stop = startWakeWord(() => {
+      setOpen(true);
+      setMinimized(false);
+      setPulse(true);
+      setTimeout(() => setPulse(false), 800);
+      // Auto-start mic immediately after wake — user can speak without tapping
+      setTimeout(() => startMic(), 400);
+    });
+    return stop;
+  }, [wakeWordOn, startWakeWord, startMic]);
+
+  useEffect(() => {
+    if (scrollRef.current && open) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, sending, open]);
 
   const msgs = messages ?? [];
 
@@ -290,17 +350,20 @@ export function EnergeniusWidget() {
             <div className="flex-1 min-w-0">
               <p className="text-[14px] font-bold text-white leading-tight">Energenius</p>
               <p className="text-[10px]" style={{ color: "rgba(148,163,184,0.55)" }}>
-                Gemini 2.5 Flash · AI Energy Assistant
+                Energenius · AI Energy Assistant
               </p>
             </div>
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setWakeWordOn((w) => !w)}
+                disabled={!sttSupported}
                 className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold transition-all"
-                style={wakeWordOn
-                  ? { background: "rgba(24,227,154,0.18)", color: "#18e39a", border: "1px solid rgba(24,227,154,0.3)" }
-                  : { background: "rgba(255,255,255,0.06)", color: "rgba(148,163,184,0.6)", border: "1px solid rgba(255,255,255,0.10)" }}
-                title={wakeWordOn ? "Wake word ON — say 'Energenius' to open" : "Enable voice wake word"}
+                style={!sttSupported
+                  ? { background: "rgba(255,255,255,0.04)", color: "rgba(148,163,184,0.3)", border: "1px solid rgba(255,255,255,0.08)", cursor: "not-allowed" }
+                  : wakeWordOn
+                    ? { background: "rgba(24,227,154,0.18)", color: "#18e39a", border: "1px solid rgba(24,227,154,0.3)" }
+                    : { background: "rgba(255,255,255,0.06)", color: "rgba(148,163,184,0.6)", border: "1px solid rgba(255,255,255,0.10)" }}
+                title={!sttSupported ? "Voice requires Chrome or Safari" : wakeWordOn ? "Wake word ON — say 'Energenius' to open" : "Enable voice wake word"}
               >
                 {wakeWordOn ? <Mic size={10} /> : <MicOff size={10} />}
                 {wakeWordOn ? "Wake on" : "Wake"}
@@ -416,14 +479,23 @@ export function EnergeniusWidget() {
                 Listening… speak now
               </div>
             )}
+            {!sttSupported && (
+              <div className="mb-2 px-3 py-1.5 rounded-lg text-[11px]"
+                style={{ background: "rgba(255,181,71,0.08)", border: "1px solid rgba(255,181,71,0.2)", color: "rgba(255,181,71,0.9)" }}>
+                Voice input requires Chrome or Safari
+              </div>
+            )}
             <div className="flex items-end gap-1.5 rounded-[14px] px-2 py-2"
               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}>
               <button
                 onClick={listening ? stopMic : startMic}
+                disabled={!sttSupported}
                 className="w-8 h-8 rounded-[9px] grid place-items-center flex-shrink-0 transition-colors"
-                style={listening
-                  ? { background: "rgba(255,107,107,0.15)", border: "1px solid rgba(255,107,107,0.3)", color: "#ff6b6b" }
-                  : { background: "rgba(255,255,255,0.05)", color: "rgba(148,163,184,0.5)" }}>
+                style={!sttSupported
+                  ? { background: "rgba(255,255,255,0.04)", color: "rgba(148,163,184,0.2)", cursor: "not-allowed" }
+                  : listening
+                    ? { background: "rgba(255,107,107,0.15)", border: "1px solid rgba(255,107,107,0.3)", color: "#ff6b6b" }
+                    : { background: "rgba(255,255,255,0.05)", color: "rgba(148,163,184,0.5)" }}>
                 {listening ? <MicOff size={13} /> : <Mic size={13} />}
               </button>
               <textarea

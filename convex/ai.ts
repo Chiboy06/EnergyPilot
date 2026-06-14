@@ -75,6 +75,20 @@ If the user needs human support: ${CONTACT_INFO}
 - When controlling a relay, always confirm the action: "Turning on Kitchen AC."
 - Tariff default: ₦225/kWh (Nigerian DisCo band A rate) unless the user has configured their own`;
 
+// Strip Markdown formatting so plain text reaches the client.
+// Gemini returns **bold**, * bullets, ### headings — none of which render
+// correctly in a plain <p> tag.
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/#{1,6}\s*/g, "")           // headings
+    .replace(/\*\*(.+?)\*\*/g, "$1")     // bold
+    .replace(/\*(.+?)\*/g, "$1")         // italic
+    .replace(/`(.+?)`/g, "$1")           // inline code
+    .replace(/^[\*\-]\s+/gm, "• ")      // bullet points → •
+    .replace(/\n{3,}/g, "\n\n")          // collapse excess blank lines
+    .trim();
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 async function resolveUser(ctx: any) {
@@ -222,14 +236,14 @@ export const sendMessage = action({
     });
 
     // Gather live context
-    const now7d = Date.now();
+    const now7d = Math.floor(Date.now() / 1000);
     const [hubState, circuits, anomalies, history7d, history] = await Promise.all([
       ctx.runQuery(api.telemetry.getHubState, { hubId: args.hubId }),
       ctx.runQuery(api.telemetry.getCircuitStates, { hubId: args.hubId }),
       ctx.runQuery(api.anomalies.getAnomalies, { hubId: args.hubId, includeResolved: false, limit: 10 }),
       ctx.runQuery(api.telemetry.getConsumptionByDay, {
         hubId: args.hubId,
-        fromTimestamp: now7d - 7 * 24 * 60 * 60 * 1000,
+        fromTimestamp: now7d - 7 * 24 * 60 * 60,
         toTimestamp: now7d,
       }),
       ctx.runQuery(api.ai.getMessages, { hubId: args.hubId }),
@@ -342,8 +356,10 @@ export const sendMessage = action({
           { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(followUpBody) }
         );
         const data2: any = res2.ok ? await res2.json() : {};
-        const reply = data2.candidates?.[0]?.content?.parts?.find((p: any) => p.text)?.text?.trim()
-          ?? `${weatherText}`;
+        const reply = stripMarkdown(
+          data2.candidates?.[0]?.content?.parts?.find((p: any) => p.text)?.text?.trim()
+          ?? weatherText
+        );
         await ctx.runMutation(api.ai.saveMessage, { hubId: args.hubId, role: "assistant", content: reply });
         return { reply };
       }
@@ -351,7 +367,7 @@ export const sendMessage = action({
 
     // Normal text response
     const textPart = parts.find((p: any) => p.text);
-    const reply    = textPart?.text?.trim() ?? "I couldn't generate a response.";
+    const reply = stripMarkdown(textPart?.text?.trim() ?? "I couldn't generate a response.");
 
     await ctx.runMutation(api.ai.saveMessage, {
       hubId:   args.hubId,
