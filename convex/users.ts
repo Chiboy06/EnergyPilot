@@ -10,6 +10,7 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { ConvexError } from "convex/values";
 
 // ── Internal: create or update a user record ──────────────────────────────
 // Called by the Clerk webhook HTTP action on user.created and user.updated.
@@ -163,6 +164,27 @@ export const storeUser = mutation({
       hasCompletedOnboarding: false,
       createdAt:              Date.now(),
       lastSignIn:             Date.now(),
+    });
+  },
+});
+
+// ── Public: update user display name ────────────────────────────────────
+export const updateName = mutation({
+  args: {
+    firstName: v.string(),
+    lastName:  v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new ConvexError("Not authenticated");
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+    if (!user) throw new ConvexError("User not found");
+    await ctx.db.patch(user._id, {
+      firstName: args.firstName,
+      lastName:  args.lastName,
     });
   },
 });

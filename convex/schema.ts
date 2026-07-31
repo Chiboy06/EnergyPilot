@@ -213,4 +213,24 @@ relayStates: defineTable({
     timestamp: v.number(),
     ttl:       v.number(),
   }).index("by_user_hub_time", ["userId", "hubId", "timestamp"]),
+
+  hubAccessCodes: defineTable({
+    hubId:     v.id("hubs"),
+    ownerId:   v.id("users"),
+    code:      v.string(),          // 6-char uppercase alphanumeric
+    role:      v.union(v.literal("viewer"), v.literal("controller")),
+    createdAt: v.number(),
+    expiresAt: v.optional(v.number()),
+  })
+    .index("by_hub",  ["hubId"])
+    .index("by_code", ["code"]),
+
+  hubMembers: defineTable({
+    hubId:     v.id("hubs"),
+    userId:    v.id("users"),
+    role:      v.union(v.literal("viewer"), v.literal("controller")),
+    joinedAt:  v.number(),
+  })
+    .index("by_hub",  ["hubId"])
+    .index("by_user", ["userId"]),
 });

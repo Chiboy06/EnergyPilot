@@ -7,14 +7,14 @@ import { useQuery } from 'convex/react'
 import { api } from '@/convex/_generated/api'
 import { useHubData } from '@/hooks/use-hub-data'
 
-export function AnalyticsStats() {
+export function AnalyticsStats({ rangeDays = 30 }: { rangeDays?: number }) {
   const { activeHub } = useHubData()
   const hubId = activeHub?._id
 
   const { from, to } = useMemo(() => {
     const to = Math.floor(Date.now() / 1000)
-    return { from: to - 30 * 86400, to }
-  }, [])
+    return { from: to - rangeDays * 86400, to }
+  }, [rangeDays])
 
   const days = useQuery(
     api.telemetry.getConsumptionByDay,

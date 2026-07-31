@@ -188,6 +188,37 @@ export const getGeminiKeyForLiveSession = query({
   },
 });
 
+// Get tariff rate from the user's active facility
+export const getTariffRate = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return { tariffPerKwh: 68, currency: "NGN" };
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", identity.subject))
+      .unique();
+    if (!user?.activeFacilityId) return { tariffPerKwh: 68, currency: "NGN" };
+    const facility: any = await ctx.db.get(user.activeFacilityId as any);
+    return {
+      tariffPerKwh: facility?.tariffPerKwh ?? 68,
+      currency:     facility?.tariffCurrency ?? "NGN",
+    };
+  },
+});
+
+// Set tariff rate on the user's active facility
+export const setTariffRate = mutation({
+  args: { tariffPerKwh: v.number() },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    if (!user.activeFacilityId) throw new ConvexError("No active facility");
+    const facility: any = await ctx.db.get(user.activeFacilityId as any);
+    if (!facility || facility.userId !== user._id) throw new ConvexError("Facility not found");
+    await ctx.db.patch(facility._id, { tariffPerKwh: args.tariffPerKwh });
+  },
+});
+
 // Get masked Gemini key status — NEVER return full key to frontend
 export const getGeminiKeyStatus = query({
   args: {},

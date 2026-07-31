@@ -10,15 +10,15 @@ import { useHubData } from '@/hooks/use-hub-data'
 
 type Metric = 'consumption' | 'cost'
 
-export function ConsumptionChart() {
+export function ConsumptionChart({ rangeDays = 30 }: { rangeDays?: number }) {
   const [metric, setMetric] = useState<Metric>('consumption')
   const { activeHub } = useHubData()
   const hubId = activeHub?._id
 
   const { from, to } = useMemo(() => {
     const to = Math.floor(Date.now() / 1000)
-    return { from: to - 30 * 86400, to }
-  }, [])
+    return { from: to - rangeDays * 86400, to }
+  }, [rangeDays])
 
   const days = useQuery(
     api.telemetry.getConsumptionByDay,

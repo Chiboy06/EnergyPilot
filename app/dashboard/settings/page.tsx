@@ -9,6 +9,7 @@ import { AccountSettings } from "@/components/dashboard/account-settings";
 import { NotificationSettings } from "@/components/dashboard/notification-settings";
 import { ThresholdsSettings } from "@/components/dashboard/threshold-settings";
 import { DeviceManagement } from "@/components/dashboard/device-management";
+import { ShareAccess } from "@/components/dashboard/share-access";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("account");
@@ -19,6 +20,7 @@ export default function SettingsPage() {
       case "notifications": return <NotificationSettings />;
       case "thresholds":    return <ThresholdsSettings />;
       case "devices":       return <DeviceManagement />;
+      case "share":         return <ShareAccess />;
       case "api":           return <APIAccess />;
       default:              return <AccountSettings />;
     }

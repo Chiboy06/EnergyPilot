@@ -326,6 +326,16 @@ export const listCircuits = query({
 });
 
 // ── Set active facility ───────────────────────────────────────────────────
+export const renameHub = mutation({
+  args: { hubId: v.id("hubs"), name: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const hub = await ctx.db.get(args.hubId);
+    if (!hub || hub.userId !== user._id) throw new ConvexError("Hub not found");
+    await ctx.db.patch(args.hubId, { name: args.name.trim() });
+  },
+});
+
 export const setActiveFacility = mutation({
   args: { facilityId: v.id("facilities") },
   handler: async (ctx, args) => {

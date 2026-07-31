@@ -43,6 +43,8 @@ export function useHubData() {
     (relayStates ?? []).map((rs) => [rs.relayNum, rs.state])
   );
 
+  const userRole: 'owner' | 'controller' | 'viewer' = (activeHub as any)?.role ?? 'owner';
+
   return {
     hubState: hubState ?? null,
     circuitStates: circuitStates ?? [],
@@ -54,6 +56,7 @@ export function useHubData() {
     facilityName,
     facilityType,
     activeHub,
+    userRole: activeHub ? userRole : 'owner',
     isLoading:
       facilityLoading ||
       (!!hubId && (hubState === undefined || circuitStates === undefined)),

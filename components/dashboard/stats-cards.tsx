@@ -1,16 +1,21 @@
 "use client";
 
 import { Zap, Activity, AlertTriangle, Gauge } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { useHubData } from "@/hooks/use-hub-data";
 
 export function StatsCards() {
   const { hubState, circuitStates, activeHub } = useHubData();
+  const anomalyCount = useQuery(
+    api.anomalies.getUnresolvedCount,
+    activeHub?._id ? { hubId: activeHub._id } : "skip"
+  ) ?? 0;
 
   const totalKw = hubState ? (hubState.totalPowerW / 1000).toFixed(2) : "—";
   const voltage = hubState ? hubState.voltage.toFixed(1) : "—";
   const activeCircuits = circuitStates.filter((c) => c.powerW > 0).length;
   const totalCircuits = circuitStates.length || activeHub?.channelCount || 0;
-  const anomalyCount = 0;
 
   const cards = [
     {
@@ -93,10 +98,7 @@ export function StatsCards() {
             )}
           </div>
 
-          <p
-            className="text-[11.5px]"
-            style={{ color: "rgba(100,116,139,0.9)" }}
-          >
+          <p className="text-[11.5px]" style={{ color: "rgba(100,116,139,0.9)" }}>
             {c.sub}
           </p>
 

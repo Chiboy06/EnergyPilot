@@ -24,6 +24,7 @@ import {
   Power,
   Zap,
   ChevronRight,
+  AlertCircle,
 } from "lucide-react";
 
 
@@ -583,26 +584,135 @@ function IntroSlides({ onDone }: { onDone: () => void }) {
   );
 }
 
+// ─── Step 1B: Join Hub with Code ──────────────────────────────────────────────
+function StepJoinWithCode({
+  onBack, onJoined,
+}: {
+  onBack: () => void;
+  onJoined: (hubName: string) => void;
+}) {
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const joinWithCode = useMutation(api.sharing.joinWithCode);
+
+  const handleJoin = async () => {
+    const trimmed = code.trim().toUpperCase();
+    if (!trimmed || loading) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const result = await joinWithCode({ code: trimmed }) as any;
+      if (result && 'error' in result && result.error) {
+        setError(result.error as string);
+      } else {
+        onJoined(result?.hubName ?? 'Facility');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to join hub. Check the code and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setCode(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12));
+        setError(null);
+      }
+    } catch { /* clipboard permission denied */ }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h1 className="text-2xl font-bold text-white">Join with Access Code</h1>
+        <p className="text-slate-400 mt-2 text-sm">
+          Enter the 6-character access code shared by the facility owner to connect.
+        </p>
+      </div>
+
+      {error && (
+        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+            Access Code
+          </label>
+          <Input
+            value={code}
+            onChange={(e) => { setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '')); setError(null); }}
+            placeholder="e.g. RAQ5RE"
+            maxLength={6}
+            className="bg-slate-800/60 border-slate-700 text-white font-mono text-center text-lg tracking-widest focus:border-emerald-500 h-12"
+          />
+        </div>
+
+        {/* 6-box segmented visualizer */}
+        <div className="flex justify-center gap-2">
+          {Array.from({ length: 6 }).map((_, i) => {
+            const char = code[i];
+            return (
+              <div
+                key={i}
+                className={cn(
+                  "w-10 h-12 rounded-lg border flex items-center justify-center font-mono text-xl font-bold transition-all",
+                  char ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400" : "border-slate-800 bg-slate-900/60 text-slate-600"
+                )}
+              >
+                {char || '_'}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={handlePaste}
+            className="text-xs text-slate-400 hover:text-emerald-400 transition-colors inline-flex items-center gap-1.5"
+          >
+            Paste from Clipboard
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-3 pt-2">
+        <Button variant="outline" onClick={onBack} disabled={loading} className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800 h-11">
+          Back
+        </Button>
+        <Button onClick={handleJoin} disabled={!code.trim() || loading} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-black font-semibold h-11">
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Join Facility"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Root Wizard ──────────────────────────────────────────────────────────────
 export function OnboardingWizard({ isAddDevice = false }: { isAddDevice?: boolean }) {
   const router = useRouter();
   const { user, isLoaded } = useUser();
   const completeOnboarding = useMutation(api.onboarding.completeOnboarding);
 
-  // Use clerkId-based query — ctx.auth.getUserIdentity() always returns null
-  // in this setup because auth.config.ts has no providers configured.
   const currentUser = useQuery(
     api.users.getCurrentUserByClerkId,
     user?.id ? { clerkId: user.id } : "skip"
   );
 
-  const [showIntro, setShowIntro] = useState(!isAddDevice);
+  const [onboardingMode, setOnboardingMode] = useState<'choose' | 'create' | 'join'>('choose');
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  // Tracks whether onboarding was completed in THIS session — suppresses the
-  // reactive redirect so the provisioning animation can finish first.
   const [justCompleted, setJustCompleted] = useState(false);
+  const [joinedHubName, setJoinedHubName] = useState<string | null>(null);
 
   // Step 0
   const [facilityName, setFacilityName] = useState("");
@@ -613,15 +723,12 @@ export function OnboardingWizard({ isAddDevice = false }: { isAddDevice?: boolea
   const [hubName, setHubName] = useState("");
   const [channelCount, setChannelCount] = useState<8 | 16 | 24 | 32>(8);
 
-  // Redirect already-onboarded users away — UNLESS they're intentionally
-  // adding a new device (isAddDevice=true) or just completed this session.
   useEffect(() => {
     if (!justCompleted && !isAddDevice && currentUser && currentUser.hasCompletedOnboarding) {
       router.replace("/dashboard");
     }
   }, [currentUser, router, justCompleted, isAddDevice]);
 
-  // Wait for Clerk to load
   if (!isLoaded || currentUser === undefined) {
     return (
       <div className="min-h-screen bg-[#0f1419] flex items-center justify-center">
@@ -671,7 +778,7 @@ export function OnboardingWizard({ isAddDevice = false }: { isAddDevice?: boolea
       {/* Wizard card */}
       <div className="flex-1 flex items-center justify-center p-4 py-8">
         <div className="w-full max-w-lg bg-[#161b22] border border-white/5 rounded-2xl p-8 shadow-2xl">
-          <StepDots current={step} total={3} />
+          <StepDots current={onboardingMode === 'join' ? 1 : step} total={3} />
 
           {error && (
             <div className="mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
@@ -679,28 +786,94 @@ export function OnboardingWizard({ isAddDevice = false }: { isAddDevice?: boolea
             </div>
           )}
 
-          {step === 0 && (
-            <StepFacility
-              facilityName={facilityName} setFacilityName={setFacilityName}
-              facilityType={facilityType} setFacilityType={setFacilityType}
-              breakerCapacity={breakerCapacity} setBreakerCapacity={setBreakerCapacity}
-              onNext={() => setStep(1)}
+          {joinedHubName ? (
+            <div className="text-center py-6 space-y-4">
+              <div className="h-14 w-14 rounded-full bg-emerald-500/20 text-emerald-400 mx-auto flex items-center justify-center">
+                <CheckCircle2 className="h-8 w-8" />
+              </div>
+              <h2 className="text-xl font-bold text-white">Successfully Joined {joinedHubName}!</h2>
+              <p className="text-sm text-slate-400">
+                You now have access to monitor live telemetry, circuits, and predictions for this facility.
+              </p>
+              <Button
+                onClick={() => router.push("/dashboard")}
+                className="w-full bg-emerald-500 hover:bg-emerald-600 text-black font-semibold h-11"
+              >
+                Go to Dashboard
+              </Button>
+            </div>
+          ) : onboardingMode === 'choose' ? (
+            <div className="space-y-6">
+              <div className="text-center">
+                <h1 className="text-2xl font-bold text-white">Welcome to EnergyPilot</h1>
+                <p className="text-slate-400 mt-2 text-sm">
+                  Choose how you want to set up your energy workspace today.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                <button
+                  onClick={() => setOnboardingMode('create')}
+                  className="flex items-start gap-4 p-5 rounded-xl border border-slate-700 bg-slate-800/40 text-left hover:border-emerald-500 hover:bg-emerald-500/5 transition-all group"
+                >
+                  <div className="h-10 w-10 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 group-hover:bg-emerald-500 group-hover:text-black transition-all">
+                    <Building2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-white text-base">Setup New Facility & Hub</p>
+                    <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                      Register a brand-new EnergyPilot Hub device using its MAC serial number and set up breaker channels.
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setOnboardingMode('join')}
+                  className="flex items-start gap-4 p-5 rounded-xl border border-slate-700 bg-slate-800/40 text-left hover:border-emerald-500 hover:bg-emerald-500/5 transition-all group"
+                >
+                  <div className="h-10 w-10 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 group-hover:bg-emerald-500 group-hover:text-black transition-all">
+                    <Zap className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-white text-base">Join Facility with Access Code</p>
+                    <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                      Enter a 6-character access code provided by a facility owner to connect as a Viewer or Controller.
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          ) : onboardingMode === 'join' ? (
+            <StepJoinWithCode
+              onBack={() => setOnboardingMode('choose')}
+              onJoined={(hubName) => setJoinedHubName(hubName)}
             />
-          )}
-          {step === 1 && (
-            <StepConnectHub
-              serial={serial} setSerial={setSerial}
-              hubName={hubName} setHubName={setHubName}
-              channelCount={channelCount} setChannelCount={setChannelCount}
-              onBack={() => setStep(0)}
-              onNext={handleProvision}
-            />
-          )}
-          {step === 2 && (
-            <StepProvisioning
-              serial={serial}
-              onComplete={() => router.push(isAddDevice ? "/dashboard/settings" : "/notifications-setup")}
-            />
+          ) : (
+            <>
+              {step === 0 && (
+                <StepFacility
+                  facilityName={facilityName} setFacilityName={setFacilityName}
+                  facilityType={facilityType} setFacilityType={setFacilityType}
+                  breakerCapacity={breakerCapacity} setBreakerCapacity={setBreakerCapacity}
+                  onNext={() => setStep(1)}
+                />
+              )}
+              {step === 1 && (
+                <StepConnectHub
+                  serial={serial} setSerial={setSerial}
+                  hubName={hubName} setHubName={setHubName}
+                  channelCount={channelCount} setChannelCount={setChannelCount}
+                  onBack={() => setStep(0)}
+                  onNext={handleProvision}
+                />
+              )}
+              {step === 2 && (
+                <StepProvisioning
+                  serial={serial}
+                  onComplete={() => router.push(isAddDevice ? "/dashboard/settings" : "/notifications-setup")}
+                />
+              )}
+            </>
           )}
         </div>
       </div>

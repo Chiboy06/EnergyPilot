@@ -15,14 +15,14 @@ const LOAD_TYPE_META: Record<string, { label: string; color: string }> = {
   other:      { label: 'Other',      color: 'bg-gray-500' },
 }
 
-export function UsageBreakdown() {
+export function UsageBreakdown({ rangeDays = 30 }: { rangeDays?: number }) {
   const { activeHub } = useHubData()
   const hubId = activeHub?._id
 
   const { from, to } = useMemo(() => {
     const to = Math.floor(Date.now() / 1000)
-    return { from: to - 30 * 86400, to }
-  }, [])
+    return { from: to - rangeDays * 86400, to }
+  }, [rangeDays])
 
   const circuits = useQuery(
     api.telemetry.getConsumptionByCircuit,

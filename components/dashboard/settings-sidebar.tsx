@@ -1,6 +1,6 @@
 'use client'
 
-import { User, Bell, AlertCircle, Wifi, Code, ChevronRight } from 'lucide-react'
+import { User, Bell, AlertCircle, Wifi, Code, ChevronRight, Share2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface SettingsSidebarProps {
@@ -21,6 +21,7 @@ const settingsGroups = [
     items: [
       { id: 'thresholds', label: 'Thresholds', icon: AlertCircle, description: 'Safety limits' },
       { id: 'devices', label: 'Devices', icon: Wifi, description: 'Hubs & facilities' },
+      { id: 'share', label: 'Share Access', icon: Share2, description: 'Codes & permissions' },
       { id: 'api', label: 'API Access', icon: Code, description: 'Developer keys' },
     ],
   },

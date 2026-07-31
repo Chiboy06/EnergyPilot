@@ -35,12 +35,45 @@ async function requireUser(ctx: any, clerkIdFallback?: string) {
   return user;
 }
 
-// ── Helper: verify hub ownership ─────────────────────────────────────────
-async function requireHubAccess(ctx: any, hubId: any, userId: any) {
+// ── Helper: verify hub control access (owner or controller) ───────────────
+async function requireHubControlAccess(ctx: any, hubId: any, userId: any) {
   const hub = await ctx.db.get(hubId);
-  if (!hub || hub.userId !== userId) {
-    throw new ConvexError("Hub not found or access denied");
+  if (!hub) throw new ConvexError("Hub not found");
+
+  // Hub owner has full control
+  if (hub.userId === userId) return { hub, role: "owner" };
+
+  // Check hubMembers table for invited members
+  const member = await ctx.db
+    .query("hubMembers")
+    .withIndex("by_hub", (q: any) => q.eq("hubId", hubId))
+    .filter((q: any) => q.eq(q.field("userId"), userId))
+    .first();
+
+  if (!member) throw new ConvexError("Access denied: Not a member of this hub");
+
+  if (member.role === "viewer") {
+    throw new ConvexError("Permission denied: Viewer role cannot actuate circuit relays");
   }
+
+  return { hub, role: member.role };
+}
+
+// ── Helper: verify hub read access (owner, controller, or viewer) ─────────
+async function requireHubReadAccess(ctx: any, hubId: any, userId: any) {
+  const hub = await ctx.db.get(hubId);
+  if (!hub) return null;
+
+  if (hub.userId === userId) return hub;
+
+  const member = await ctx.db
+    .query("hubMembers")
+    .withIndex("by_hub", (q: any) => q.eq("hubId", hubId))
+    .filter((q: any) => q.eq(q.field("userId"), userId))
+    .first();
+
+  if (!member) return null;
+
   return hub;
 }
 
@@ -57,7 +90,7 @@ export const sendCommand = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx, args.clerkId);
-    const hub  = await requireHubAccess(ctx, args.hubId, user._id);
+    const { hub } = await requireHubControlAccess(ctx, args.hubId, user._id);
 
     // Validate relayNum
     if (args.relayNum !== 255 && (args.relayNum < 0 || args.relayNum > 15)) {
@@ -177,8 +210,8 @@ export const getRelayStates = query({
 
     if (!user) return [];
 
-    const hub = await ctx.db.get(args.hubId);
-    if (!hub || hub.userId !== user._id) return [];
+    const hub = await requireHubReadAccess(ctx, args.hubId, user._id);
+    if (!hub) return [];
 
     const states = await ctx.db
       .query("relayStates")
