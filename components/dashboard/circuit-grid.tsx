@@ -8,6 +8,8 @@ import { useHubData } from "@/hooks/use-hub-data";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import Link from "next/link";
+import { CircuitEnergyModal } from "@/components/dashboard/circuit-energy-modal";
+import type { Id } from "@/convex/_generated/dataModel";
 
 const VOLTAGE = 220;
 const POWER_FACTOR = 0.85;
@@ -32,6 +34,12 @@ export function CircuitGrid({ filter }: CircuitGridProps) {
   const [confirmAllOff, setConfirmAllOff] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [modalCircuit, setModalCircuit] = useState<{
+    _id: Id<"circuits">;
+    name: string;
+    loadType?: string;
+    channelIndex: number;
+  } | null>(null);
   const renameCircuit = useMutation(api.circuits.renameCircuit);
 
   const anomalies = useQuery(
@@ -156,7 +164,11 @@ export function CircuitGrid({ filter }: CircuitGridProps) {
           const isEditing = editingId === circuit._id;
 
           return (
-            <div key={circuit._id} className="glass-card relative p-5 transition-all">
+            <div
+              key={circuit._id}
+              className="glass-card relative p-5 transition-all cursor-pointer hover:ring-1 hover:ring-emerald-500/30"
+              onClick={() => setModalCircuit({ _id: circuit._id as Id<"circuits">, name: circuit.name, loadType: circuit.loadType, channelIndex: circuit.channelIndex })}
+            >
               {hasAnomaly && (
                 <div className="absolute top-3 right-3 flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold"
                   style={{ background: "rgba(255,107,107,0.15)", color: "#ff6b6b", border: "1px solid rgba(255,107,107,0.3)" }}>
@@ -220,7 +232,11 @@ export function CircuitGrid({ filter }: CircuitGridProps) {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+              <div
+                className="flex items-center justify-between pt-3"
+                style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}
+                onClick={(e) => e.stopPropagation()}
+              >
                 <span className="text-[11px]" style={{ color: "rgba(100,116,139,0.8)" }}>
                   Pred:{" "}
                   <span className="font-mono font-medium" style={{ color: "#18e39a" }}>
@@ -240,6 +256,16 @@ export function CircuitGrid({ filter }: CircuitGridProps) {
           );
         })}
       </div>
+
+      {modalCircuit && (
+        <CircuitEnergyModal
+          circuitId={modalCircuit._id}
+          circuitName={modalCircuit.name}
+          loadType={modalCircuit.loadType}
+          channelIndex={modalCircuit.channelIndex}
+          onClose={() => setModalCircuit(null)}
+        />
+      )}
     </div>
   );
 }
