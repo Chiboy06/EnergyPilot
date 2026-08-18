@@ -5,7 +5,7 @@ import { X, Zap, Wind, Lightbulb, Car, Cpu } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer,
+  ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -73,6 +73,33 @@ export function CircuitEnergyModal({
     ? Math.round((avgPower * (readings.length * 5)) / 3600 / 1000 * 1000) / 1000
     : 0;
 
+  // Efficiency score: stability of power delivery (0–100)
+  // High score = power stays close to its average (consistent load)
+  const efficiencyScore = useMemo(() => {
+    if (!readings || readings.length < 2 || peakPower === 0) return null;
+    const variance = readings.reduce((s, r) => s + Math.pow(r.powerW - avgPower, 2), 0) / readings.length;
+    const stdDev = Math.sqrt(variance);
+    const cv = stdDev / (peakPower || 1); // coefficient of variation
+    return Math.round(Math.max(0, Math.min(100, (1 - cv) * 100)));
+  }, [readings, avgPower, peakPower]);
+
+  // Usage breakdown: OFF / LOW / HIGH buckets
+  const usageBreakdown = useMemo(() => {
+    if (!readings || readings.length === 0) return null;
+    let off = 0, low = 0, high = 0;
+    for (const r of readings) {
+      if (r.powerW === 0) off++;
+      else if (r.powerW < peakPower * 0.6) low++;
+      else high++;
+    }
+    const total = readings.length;
+    return [
+      { name: "Off",  value: Math.round((off  / total) * 100), color: "rgba(88,105,128,0.7)" },
+      { name: "Low",  value: Math.round((low  / total) * 100), color: "#18e39a" },
+      { name: "High", value: Math.round((high / total) * 100), color: "#ffb547" },
+    ].filter((b) => b.value > 0);
+  }, [readings, peakPower]);
+
   const dataKey = metric === "power" ? "power" : "current";
   const yLabel = metric === "power" ? "W" : "A";
   const color = "#18e39a";
@@ -130,6 +157,69 @@ export function CircuitEnergyModal({
             </div>
           ))}
         </div>
+
+        {/* Efficiency Score + Usage Breakdown */}
+        {(efficiencyScore !== null || usageBreakdown) && (
+          <div className="grid grid-cols-2 gap-3">
+            {/* Efficiency Score */}
+            {efficiencyScore !== null && (
+              <div
+                className="rounded-xl p-4"
+                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+              >
+                <p className="text-[10px] mb-2" style={{ color: "rgba(100,116,139,0.8)" }}>Efficiency Score</p>
+                <div className="flex items-end gap-2">
+                  <span
+                    className="font-mono font-bold text-[28px] leading-none"
+                    style={{ color: efficiencyScore >= 70 ? "#18e39a" : efficiencyScore >= 40 ? "#ffb547" : "#f87171" }}
+                  >
+                    {efficiencyScore}
+                  </span>
+                  <span className="text-[11px] mb-1" style={{ color: "rgba(100,116,139,0.7)" }}>/100</span>
+                </div>
+                <div className="mt-2 w-full h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${efficiencyScore}%`,
+                      background: efficiencyScore >= 70 ? "#18e39a" : efficiencyScore >= 40 ? "#ffb547" : "#f87171",
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] mt-1.5" style={{ color: "rgba(100,116,139,0.6)" }}>
+                  {efficiencyScore >= 70 ? "Stable load" : efficiencyScore >= 40 ? "Moderate variation" : "Unstable load"}
+                </p>
+              </div>
+            )}
+
+            {/* Usage Breakdown */}
+            {usageBreakdown && (
+              <div
+                className="rounded-xl p-4"
+                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+              >
+                <p className="text-[10px] mb-2" style={{ color: "rgba(100,116,139,0.8)" }}>Usage Breakdown</p>
+                <div className="flex items-center gap-3">
+                  <PieChart width={64} height={64}>
+                    <Pie data={usageBreakdown} dataKey="value" cx={28} cy={28} innerRadius={18} outerRadius={30} strokeWidth={0}>
+                      {usageBreakdown.map((b) => <Cell key={b.name} fill={b.color} />)}
+                    </Pie>
+                  </PieChart>
+                  <div className="space-y-1">
+                    {usageBreakdown.map((b) => (
+                      <div key={b.name} className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: b.color }} />
+                        <span className="text-[11px]" style={{ color: "rgba(148,163,184,0.8)" }}>
+                          {b.name} <span className="font-mono">{b.value}%</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Controls */}
         <div className="flex items-center justify-between">
