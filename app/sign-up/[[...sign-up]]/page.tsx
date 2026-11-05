@@ -35,21 +35,15 @@ export default function SignUpPage() {
             <span className="text-xl font-bold text-white">EnergyPilot</span>
           </Link>
 
-          <blockquote className="space-y-8">
+          {/* CONTENT NEEDED (team): a real, permissioned customer quote. */}
+          <div className="space-y-4">
             <p className="text-3xl font-bold text-white leading-tight">
-              &quot;EnergyPilot transformed how we manage energy across our 50
-              locations. The anomaly detection alone saved us $120k last year.&quot;
+              See every circuit in your building, live.
             </p>
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-slate-700" />
-              <div>
-                <div className="font-semibold text-white">Sarah Miller</div>
-                <div className="text-sm text-slate-400">
-                  VP of Operations at TechSpace
-                </div>
-              </div>
-            </div>
-          </blockquote>
+            <p className="text-lg text-slate-400">
+              Per-circuit current, daily energy totals, in-app alerts and remote switching.
+            </p>
+          </div>
         </div>
       </div>
 

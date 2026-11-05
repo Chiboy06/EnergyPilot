@@ -6,7 +6,8 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useHubData } from "@/hooks/use-hub-data";
-import { Bot, Send, Zap, ZapOff, Volume2, VolumeX } from "lucide-react";
+import { Bot, Send, Volume2, VolumeX } from "lucide-react";
+import { AI_SCOPE_TEXT, AI_SUGGESTIONS, RelayProposal } from "@/components/dashboard/ai-shared";
 
 function relTime(ts: number): string {
   const d = Date.now() - ts;
@@ -16,15 +17,10 @@ function relTime(ts: number): string {
   return new Date(ts).toLocaleDateString();
 }
 
-const SUGGESTIONS = [
-  "What's my current power draw?",
-  "Are there any active anomalies?",
-  "Turn on relay 1",
-  "How much energy did I use today?",
-];
+const SUGGESTIONS = AI_SUGGESTIONS;
 
 export default function AiPage() {
-  const { activeHub } = useHubData();
+  const { activeHub, userRole } = useHubData();
   const hubId = activeHub?._id;
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -90,8 +86,8 @@ export default function AiPage() {
     <div className="h-[calc(100vh-5rem)] flex flex-col eg-anim-fade-in">
       {/* Page header */}
       <div className="flex-shrink-0 mb-4">
-        <p className="text-[10px] font-semibold tracking-[0.16em] uppercase mb-1.5" style={{ color: "rgba(148,163,184,0.55)" }}>
-          Energenius · Function calling
+        <p className="text-xs font-semibold tracking-[0.16em] uppercase mb-1.5" style={{ color: "rgba(148,163,184,0.55)" }}>
+          AI assistant · energy &amp; system questions
         </p>
         <h1 className="text-2xl font-bold text-white tracking-tight">Energenius</h1>
       </div>
@@ -125,9 +121,9 @@ export default function AiPage() {
                 <Bot size={28} style={{ color: "#18e39a" }} />
               </div>
               <div className="text-center max-w-sm">
-                <h2 className="text-[18px] font-bold text-white mb-2">Hi, I'm Energenius</h2>
-                <p className="text-[13px] text-muted-foreground leading-relaxed">
-                  Ask about your energy usage, forecasts, today's weather impact, anomalies, or say "turn on relay 1" to control circuits.
+                <h2 className="text-xl font-bold text-white mb-2">Energenius assistant</h2>
+                <p className="text-base text-muted-foreground leading-relaxed">
+                  {AI_SCOPE_TEXT}
                 </p>
               </div>
               {hubId && (
@@ -136,7 +132,7 @@ export default function AiPage() {
                     <button
                       key={s}
                       onClick={() => setInput(s)}
-                      className="px-3 py-1.5 rounded-full text-[12px] transition-all"
+                      className="px-3 py-1.5 rounded-full text-sm transition-all"
                       style={{
                         background: "rgba(255,255,255,0.06)",
                         border: "1px solid rgba(255,255,255,0.12)",
@@ -149,7 +145,7 @@ export default function AiPage() {
                 </div>
               )}
               {!hubId && (
-                <p className="text-[12px] mt-2" style={{ color: "rgba(255,107,107,0.8)" }}>
+                <p className="text-sm mt-2" style={{ color: "rgba(255,107,107,0.8)" }}>
                   No hub connected — complete onboarding first.
                 </p>
               )}
@@ -190,26 +186,15 @@ export default function AiPage() {
                         }
                   }
                 >
-                  <p className="text-[13.5px] leading-relaxed text-white whitespace-pre-wrap">
+                  <p className="text-base leading-relaxed text-white whitespace-pre-wrap">
                     {msg.content}
                   </p>
-                  {/* Relay action badge */}
                   {msg.relayAction && (
-                    <div
-                      className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full text-[11px] font-semibold"
-                      style={{
-                        background: msg.relayAction.state ? "rgba(24,227,154,0.12)" : "rgba(255,107,107,0.12)",
-                        border: `1px solid ${msg.relayAction.state ? "rgba(24,227,154,0.3)" : "rgba(255,107,107,0.3)"}`,
-                        color: msg.relayAction.state ? "#18e39a" : "#ff6b6b",
-                      }}
-                    >
-                      {msg.relayAction.state ? <Zap size={10} /> : <ZapOff size={10} />}
-                      {msg.relayAction.state ? "ON" : "OFF"} — {msg.relayAction.circuitName}
-                    </div>
+                    <RelayProposal messageId={msg._id} action={msg.relayAction} canControl={userRole !== "viewer"} />
                   )}
                   <div className="flex items-center gap-2 mt-1.5" style={{ justifyContent: isUser ? "flex-end" : "flex-start" }}>
                     <p
-                      className="text-[10px] font-mono"
+                      className="text-xs font-mono"
                       style={{ color: "rgba(88,105,128,0.9)" }}
                     >
                       {relTime(msg.timestamp)}
@@ -267,7 +252,7 @@ export default function AiPage() {
           {/* Error */}
           {error && (
             <div
-              className="flex items-center gap-2 px-3 py-2 rounded-[10px] text-[12px]"
+              className="flex items-center gap-2 px-3 py-2 rounded-[10px] text-sm"
               style={{ background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.2)", color: "#ff6b6b" }}
             >
               {error}
@@ -323,8 +308,8 @@ export default function AiPage() {
               <Send size={15} />
             </button>
           </div>
-          <p className="text-[10px] mt-1.5 text-center" style={{ color: "rgba(88,105,128,0.6)" }}>
-            Enter to send · Shift+Enter for new line · AI can control relays
+          <p className="text-xs mt-1.5 text-center" style={{ color: "rgba(148,163,184,0.8)" }}>
+            Enter to send · Shift+Enter for new line · relay suggestions need your Confirm
           </p>
         </div>
       </div>

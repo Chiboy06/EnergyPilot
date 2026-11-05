@@ -11,26 +11,16 @@ export default function PredictionsPage() {
   return (
     <div className="space-y-6 eg-anim-fade-in">
       {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-        <div>
-          <p className="text-[10px] font-semibold tracking-[0.16em] uppercase mb-1.5" style={{ color: "rgba(148,163,184,0.55)" }}>
-            SageMaker · Load Forecasting
-          </p>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Energy Forecast &amp; Insights</h1>
-          <p className="text-[13px] mt-0.5" style={{ color: "rgba(100,116,139,0.9)" }}>
-            DeepAR model · retrained nightly · MAE 38W on validation
-          </p>
-        </div>
-        <button
-          className="flex items-center gap-2 px-4 py-2 rounded-[12px] text-[13px] font-medium transition-colors self-start"
-          style={{
-            background: "rgba(255,255,255,0.07)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            color: "rgba(148,163,184,0.9)",
-          }}
-        >
-          ☰ Model Settings
-        </button>
+      <div>
+        <p className="text-xs font-semibold tracking-[0.12em] uppercase mb-1.5" style={{ color: "rgba(148,163,184,0.8)" }}>
+          Estimate · not a validated forecast
+        </p>
+        <h1 className="text-3xl lg:text-4xl font-bold text-white tracking-tight">24-Hour Energy Estimate</h1>
+        <p className="text-base lg:text-lg mt-1 max-w-3xl" style={{ color: "rgba(148,163,184,0.85)" }}>
+          For each hour of the next 24 hours, we show the average power your whole system drew at that hour over the
+          last 7 days. It assumes the coming day looks like recent days, has not been checked for accuracy, and is
+          regenerated once a day at 01:00 WAT.
+        </p>
       </div>
 
       <ForecastStats />

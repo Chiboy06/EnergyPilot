@@ -4,7 +4,8 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useHubData } from "@/hooks/use-hub-data";
-import { Bot, Send, X, Minimize2, Zap, ZapOff, Mic, MicOff } from "lucide-react";
+import { Bot, Send, X, Minimize2, Mic, MicOff } from "lucide-react";
+import { AI_SCOPE_TEXT, AI_SUGGESTIONS, RelayProposal } from "./ai-shared";
 
 const FAB_SIZE = 56;
 const PANEL_W = 380;
@@ -23,20 +24,15 @@ function relTime(ts: number): string {
   return new Date(ts).toLocaleDateString();
 }
 
-const QUICK_PROMPTS = [
-  "What's my current power draw?",
-  "Any anomalies right now?",
-  "What's the weather today?",
-  "Show today's forecast",
-];
+const QUICK_PROMPTS = AI_SUGGESTIONS;
 
 
 // All realistic transcriptions of the made-up word "Energenius" across browsers.
 // Chrome returns "energy genius" or "energenius"; Safari returns "energy genius" or "energize us".
 // const WAKE_VARIANTS = ["energenius", "energy genius", "energize us", "energia", "energize"];
 
-// "Energy" is a common word — all STT engines transcribe it reliably, no variants needed.
-const WAKE_VARIANTS = ["energy"];
+// Same wake word as the mobile app. Browsers transcribe it inconsistently, so accept common variants.
+const WAKE_VARIANTS = ["energenius", "energy genius", "energize us"];
 
 function isSpeechSupported() {
   return typeof window !== "undefined" &&
@@ -139,7 +135,7 @@ function useSpeechRecognition(onResult: (text: string) => void, onEnd?: () => vo
 }
 
 export function EnergeniusWidget() {
-  const { activeHub } = useHubData();
+  const { activeHub, userRole } = useHubData();
   const hubId = activeHub?._id;
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -258,7 +254,6 @@ export function EnergeniusWidget() {
   const messages = useQuery(api.ai.getMessages, hubId && open ? { hubId } : "skip");
   const sendMessageAction = useAction(api.ai.sendMessage);
 
-  const startMicRef = useRef<() => void>(() => {});
 
   const handleSend = useCallback(async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
@@ -268,12 +263,7 @@ export function EnergeniusWidget() {
     setSending(true);
     try {
       const result = await sendMessageAction({ hubId, content: text });
-      if (result?.reply) {
-        speak(result.reply);
-        const words = result.reply.split(/\s+/).length;
-        const delay = Math.min(words * 80 + 500, 8000);
-        setTimeout(() => startMicRef.current(), delay);
-      }
+      if (result?.reply) speak(result.reply);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to send");
     } finally {
@@ -294,13 +284,6 @@ export function EnergeniusWidget() {
     (text) => setInput(text),
     onSpeechEnd
   );
-  // Keep ref in sync so handleSend can call startMic without a forward-reference
-  startMicRef.current = startMic;
-
-  // Auto-enable wake word on mount when STT is supported (always-on like Alexa)
-  useEffect(() => {
-    if (isSpeechSupported()) setWakeWordOn(true);
-  }, []);
 
   useEffect(() => {
     if (!wakeWordOn) return;
@@ -380,7 +363,7 @@ export function EnergeniusWidget() {
             <div className="flex-1 min-w-0">
               <p className="text-[14px] font-bold text-white leading-tight">Energenius</p>
               <p className="text-[10px]" style={{ color: "rgba(148,163,184,0.55)" }}>
-                Energenius · AI Energy Assistant
+                Energy &amp; system questions · AI, can be wrong
               </p>
             </div>
             <div className="flex items-center gap-1.5">
@@ -393,13 +376,14 @@ export function EnergeniusWidget() {
                   : wakeWordOn
                     ? { background: "rgba(24,227,154,0.18)", color: "#18e39a", border: "1px solid rgba(24,227,154,0.3)" }
                     : { background: "rgba(255,255,255,0.06)", color: "rgba(148,163,184,0.6)", border: "1px solid rgba(255,255,255,0.10)" }}
-                title={!sttSupported ? "Voice requires Chrome or Safari" : wakeWordOn ? "Wake word ON — say 'Energy' to open" : "Enable voice wake word"}
+                title={!sttSupported ? "Voice requires Chrome or Safari" : wakeWordOn ? "Wake word on — the microphone stays open and your browser's speech service processes what it hears. Click to turn off." : "Turn on the wake word: keeps the microphone open and listens for 'Energenius'. Audio is processed by your browser's speech service."}
               >
                 {wakeWordOn ? <Mic size={10} /> : <MicOff size={10} />}
-                {wakeWordOn ? "Wake on" : "Wake"}
+                {wakeWordOn ? "Mic listening" : "Wake word"}
               </button>
               <button
                 onClick={() => setMinimized(true)}
+                aria-label="Minimise assistant"
                 className="w-7 h-7 rounded-lg grid place-items-center transition-colors"
                 style={{ background: "rgba(255,255,255,0.06)", color: "rgba(148,163,184,0.5)" }}
               >
@@ -417,9 +401,9 @@ export function EnergeniusWidget() {
                   <Bot size={24} style={{ color: "#18e39a" }} />
                 </div>
                 <div className="text-center">
-                  <p className="text-[15px] font-bold text-white mb-1">Hi, I'm Energenius</p>
-                  <p className="text-[12px] leading-relaxed" style={{ color: "rgba(148,163,184,0.7)" }}>
-                    Ask about energy, weather impact, anomalies, or control circuits.
+                  <p className="text-base font-bold text-white mb-1">Energenius assistant</p>
+                  <p className="text-sm leading-relaxed" style={{ color: "rgba(203,213,225,0.85)" }}>
+                    {AI_SCOPE_TEXT}
                   </p>
                 </div>
                 {hubId && (
@@ -457,15 +441,7 @@ export function EnergeniusWidget() {
                       : { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)", borderBottomLeftRadius: 3 }}>
                     <p className="text-[12.5px] leading-relaxed text-white whitespace-pre-wrap">{msg.content}</p>
                     {msg.relayAction && (
-                      <div className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                        style={{
-                          background: msg.relayAction.state ? "rgba(24,227,154,0.12)" : "rgba(255,107,107,0.12)",
-                          border: `1px solid ${msg.relayAction.state ? "rgba(24,227,154,0.28)" : "rgba(255,107,107,0.28)"}`,
-                          color: msg.relayAction.state ? "#18e39a" : "#ff6b6b",
-                        }}>
-                        {msg.relayAction.state ? <Zap size={9} /> : <ZapOff size={9} />}
-                        {msg.relayAction.state ? "ON" : "OFF"} — {msg.relayAction.circuitName}
-                      </div>
+                      <RelayProposal messageId={msg._id} action={msg.relayAction} canControl={userRole !== "viewer"} />
                     )}
                     <p className="text-[9.5px] mt-1 font-mono"
                       style={{ color: "rgba(88,105,128,0.8)", textAlign: isUser ? "right" : "left" }}>
@@ -505,8 +481,8 @@ export function EnergeniusWidget() {
             {listening && (
               <div className="flex items-center gap-1.5 mb-2 px-3 py-1.5 rounded-lg text-[11px]"
                 style={{ background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.18)", color: "#ff6b6b" }}>
-                <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-                Listening… speak now
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" aria-hidden />
+                Listening… your message sends when you stop speaking
               </div>
             )}
             {!sttSupported && (
@@ -519,6 +495,7 @@ export function EnergeniusWidget() {
               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)" }}>
               <button
                 onClick={listening ? stopMic : startMic}
+                aria-label={listening ? "Stop voice input" : "Speak your question"}
                 disabled={!sttSupported}
                 className="w-8 h-8 rounded-[9px] grid place-items-center flex-shrink-0 transition-colors"
                 style={!sttSupported
@@ -529,6 +506,7 @@ export function EnergeniusWidget() {
                 {listening ? <MicOff size={13} /> : <Mic size={13} />}
               </button>
               <textarea
+                aria-label="Message to Energenius"
                 className="flex-1 bg-transparent text-white text-[13px] outline-none resize-none placeholder:text-muted-foreground leading-relaxed"
                 placeholder={hubId ? "Ask Energenius…" : "Connect a hub first…"}
                 rows={1}
@@ -546,6 +524,7 @@ export function EnergeniusWidget() {
               />
               <button
                 onClick={() => handleSend()}
+                aria-label="Send"
                 disabled={!input.trim() || !hubId || sending}
                 className="w-8 h-8 rounded-[9px] grid place-items-center flex-shrink-0 transition-all"
                 style={!input.trim() || !hubId || sending

@@ -24,12 +24,7 @@ export default function DashboardLayout({
   // Sync Clerk user into Convex on every session
   useStoreUserEffect();
 
-  // Use clerkId-based query — ctx.auth.getUserIdentity() always returns null
-  // in this setup because auth.config.ts has no providers configured.
-  const currentUser = useQuery(
-    api.users.getCurrentUserByClerkId,
-    user?.id ? { clerkId: user.id } : "skip"
-  );
+  const currentUser = useQuery(api.users.getMe, user?.id ? {} : "skip");
 
   useEffect(() => {
     if (!isLoaded) return;

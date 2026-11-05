@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { X, Zap, Wind, Lightbulb, Car, Cpu } from "lucide-react";
 import {
-  BarChart, Bar, LineChart, Line,
+  LineChart, Line, ReferenceLine,
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
@@ -11,79 +11,61 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
-function getLoadTypeIcon(loadType?: string) {
-  switch (loadType) {
-    case "lighting":   return Lightbulb;
-    case "hvac":       return Wind;
-    case "ev_charger": return Car;
-    case "general":    return Cpu;
-    default:           return Zap;
-  }
-}
+const LOAD_TYPE_ICON: Record<string, typeof Zap> = {
+  lighting: Lightbulb, hvac: Wind, ev_charger: Car, general: Cpu,
+};
 
 interface CircuitEnergyModalProps {
   circuitId: Id<"circuits">;
   circuitName: string;
   loadType?: string;
   channelIndex: number;
+  maxAmps?: number;
   onClose: () => void;
 }
 
-type ChartType = "bar" | "line";
 type Metric = "power" | "current";
+
+const METRIC = {
+  power:   { label: "Power", unit: "W", note: "estimated from current × voltage × 0.85 PF" },
+  current: { label: "Current", unit: "A", note: "measured" },
+} as const;
+
+const fmtTime = (sec: number) =>
+  new Date(sec * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
 export function CircuitEnergyModal({
   circuitId,
   circuitName,
   loadType,
   channelIndex,
+  maxAmps,
   onClose,
 }: CircuitEnergyModalProps) {
-  const [chartType, setChartType] = useState<ChartType>("bar");
-  const [metric, setMetric] = useState<Metric>("power");
+  const [metric, setMetric] = useState<Metric>("current");
 
-  const readings = useQuery(api.telemetry.getCircuitReadings, {
-    circuitId,
-    limit: 60,
-  });
+  const readings = useQuery(api.telemetry.getCircuitReadings, { circuitId, limit: 60 });
 
-  const Icon = getLoadTypeIcon(loadType);
+  const Icon = LOAD_TYPE_ICON[loadType ?? ""] ?? Zap;
 
   const chartData = useMemo(() => {
     if (!readings) return [];
-    return [...readings]
-      .reverse()
-      .map((r, i) => ({
-        label: i % 10 === 0
-          ? new Date(r.timestamp * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-          : "",
-        power: Math.round(r.powerW),
-        current: Math.round(r.currentAmps * 100) / 100,
-      }));
+    return [...readings].reverse().map((r) => ({
+      time:    fmtTime(r.timestamp),
+      power:   Math.round(r.powerW),
+      current: Math.round(r.currentAmps * 100) / 100,
+    }));
   }, [readings]);
 
   const latest = readings?.[0];
   const avgPower = readings?.length
-    ? Math.round(readings.reduce((s, r) => s + r.powerW, 0) / readings.length)
+    ? readings.reduce((s, r) => s + r.powerW, 0) / readings.length
     : 0;
-  const peakPower = readings?.length
-    ? Math.round(Math.max(...readings.map((r) => r.powerW)))
-    : 0;
-  const estimatedKwh = readings?.length
-    ? Math.round((avgPower * (readings.length * 5)) / 3600 / 1000 * 1000) / 1000
-    : 0;
+  const peakPower = readings?.length ? Math.max(...readings.map((r) => r.powerW)) : 0;
+  // Each reading represents one 5 s interval.
+  const estimatedWh = readings?.length ? (avgPower * readings.length * 5) / 3600 : 0;
 
-  // Efficiency score: stability of power delivery (0–100)
-  // High score = power stays close to its average (consistent load)
-  const efficiencyScore = useMemo(() => {
-    if (!readings || readings.length < 2 || peakPower === 0) return null;
-    const variance = readings.reduce((s, r) => s + Math.pow(r.powerW - avgPower, 2), 0) / readings.length;
-    const stdDev = Math.sqrt(variance);
-    const cv = stdDev / (peakPower || 1); // coefficient of variation
-    return Math.round(Math.max(0, Math.min(100, (1 - cv) * 100)));
-  }, [readings, avgPower, peakPower]);
-
-  // Usage breakdown: OFF / LOW / HIGH buckets
+  // Share of these readings at zero / below 60% of this session's peak / at or above it.
   const usageBreakdown = useMemo(() => {
     if (!readings || readings.length === 0) return null;
     let off = 0, low = 0, high = 0;
@@ -94,15 +76,16 @@ export function CircuitEnergyModal({
     }
     const total = readings.length;
     return [
-      { name: "Off",  value: Math.round((off  / total) * 100), color: "rgba(88,105,128,0.7)" },
-      { name: "Low",  value: Math.round((low  / total) * 100), color: "#18e39a" },
-      { name: "High", value: Math.round((high / total) * 100), color: "#ffb547" },
+      { name: "Off",  meaning: "0 W",                       value: Math.round((off  / total) * 100), color: "rgba(148,163,184,0.7)" },
+      { name: "Low",  meaning: "under 60% of session peak", value: Math.round((low  / total) * 100), color: "#18e39a" },
+      { name: "High", meaning: "60%+ of session peak",      value: Math.round((high / total) * 100), color: "#ffb547" },
     ].filter((b) => b.value > 0);
   }, [readings, peakPower]);
 
-  const dataKey = metric === "power" ? "power" : "current";
-  const yLabel = metric === "power" ? "W" : "A";
-  const color = "#18e39a";
+  const m = METRIC[metric];
+  const span = readings && readings.length > 1
+    ? `${fmtTime(readings[readings.length - 1].timestamp)}–${fmtTime(readings[0].timestamp)}`
+    : null;
 
   return (
     <div
@@ -111,202 +94,142 @@ export function CircuitEnergyModal({
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="w-full max-w-2xl rounded-2xl p-6 space-y-5"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`CH${channelIndex + 1} ${circuitName} readings`}
+        className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl p-6 space-y-5"
         style={{
           background: "rgba(15,23,42,0.97)",
           border: "1px solid rgba(255,255,255,0.08)",
           boxShadow: "0 25px 60px rgba(0,0,0,0.6)",
         }}
       >
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-[9px]" style={{ background: "rgba(24,227,154,0.10)", color: "#18e39a" }}>
+            <div className="p-2 rounded-[9px]" style={{ background: "rgba(24,227,154,0.10)", color: "#18e39a" }} aria-hidden>
               <Icon className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-white font-semibold text-[16px]">{circuitName}</h2>
-              <p className="text-[11px]" style={{ color: "rgba(100,116,139,0.8)" }}>
-                CH{channelIndex + 1} · Energy consumption history
+              <h2 className="text-white font-semibold text-xl">CH{channelIndex + 1} · {circuitName}</h2>
+              <p className="text-sm" style={{ color: "rgba(148,163,184,0.85)" }}>
+                This circuit only · recent readings{span ? ` · ${span}` : ""}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
-            style={{ color: "rgba(100,116,139,0.8)" }}
+            style={{ color: "rgba(148,163,184,0.9)" }}
           >
-            <X size={18} />
+            <X size={20} />
           </button>
         </div>
 
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
-            { label: "Current Power", value: `${latest ? Math.round(latest.powerW) : 0} W` },
-            { label: "Peak (session)", value: `${peakPower} W` },
-            { label: "Est. Energy", value: `${estimatedKwh} kWh` },
+            { label: "Latest reading", value: latest ? `${latest.currentAmps.toFixed(2)} A · ${Math.round(latest.powerW)} W` : "—" },
+            { label: "Peak in these readings", value: `${Math.round(peakPower)} W` },
+            { label: "Energy over these readings", value: `${estimatedWh.toFixed(1)} Wh (est.)` },
           ].map(({ label, value }) => (
-            <div
-              key={label}
-              className="rounded-xl p-3 text-center"
-              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
-            >
-              <p className="text-[10px] mb-1" style={{ color: "rgba(100,116,139,0.8)" }}>{label}</p>
-              <p className="text-white font-mono font-bold text-[15px]">{value}</p>
+            <div key={label} className="rounded-xl p-3 text-center"
+              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <p className="text-xs mb-1" style={{ color: "rgba(148,163,184,0.85)" }}>{label}</p>
+              <p className="text-white font-mono font-bold text-lg">{value}</p>
             </div>
           ))}
         </div>
 
-        {/* Efficiency Score + Usage Breakdown */}
-        {(efficiencyScore !== null || usageBreakdown) && (
-          <div className="grid grid-cols-2 gap-3">
-            {/* Efficiency Score */}
-            {efficiencyScore !== null && (
-              <div
-                className="rounded-xl p-4"
-                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
-              >
-                <p className="text-[10px] mb-2" style={{ color: "rgba(100,116,139,0.8)" }}>Efficiency Score</p>
-                <div className="flex items-end gap-2">
-                  <span
-                    className="font-mono font-bold text-[28px] leading-none"
-                    style={{ color: efficiencyScore >= 70 ? "#18e39a" : efficiencyScore >= 40 ? "#ffb547" : "#f87171" }}
-                  >
-                    {efficiencyScore}
-                  </span>
-                  <span className="text-[11px] mb-1" style={{ color: "rgba(100,116,139,0.7)" }}>/100</span>
-                </div>
-                <div className="mt-2 w-full h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${efficiencyScore}%`,
-                      background: efficiencyScore >= 70 ? "#18e39a" : efficiencyScore >= 40 ? "#ffb547" : "#f87171",
-                    }}
-                  />
-                </div>
-                <p className="text-[10px] mt-1.5" style={{ color: "rgba(100,116,139,0.6)" }}>
-                  {efficiencyScore >= 70 ? "Stable load" : efficiencyScore >= 40 ? "Moderate variation" : "Unstable load"}
-                </p>
-              </div>
-            )}
-
-            {/* Usage Breakdown */}
-            {usageBreakdown && (
-              <div
-                className="rounded-xl p-4"
-                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
-              >
-                <p className="text-[10px] mb-2" style={{ color: "rgba(100,116,139,0.8)" }}>Usage Breakdown</p>
-                <div className="flex items-center gap-3">
-                  <PieChart width={64} height={64}>
-                    <Pie data={usageBreakdown} dataKey="value" cx={28} cy={28} innerRadius={18} outerRadius={30} strokeWidth={0}>
-                      {usageBreakdown.map((b) => <Cell key={b.name} fill={b.color} />)}
-                    </Pie>
-                  </PieChart>
-                  <div className="space-y-1">
-                    {usageBreakdown.map((b) => (
-                      <div key={b.name} className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: b.color }} />
-                        <span className="text-[11px]" style={{ color: "rgba(148,163,184,0.8)" }}>
-                          {b.name} <span className="font-mono">{b.value}%</span>
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
+        {usageBreakdown && (
+          <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <p className="text-sm font-semibold text-white mb-1">How these readings split</p>
+            <p className="text-xs mb-3" style={{ color: "rgba(148,163,184,0.85)" }}>
+              Relative to this circuit&apos;s own peak in the readings shown — not a safety limit.
+            </p>
+            <div className="flex items-center gap-4">
+              <PieChart width={64} height={64} aria-hidden>
+                <Pie data={usageBreakdown} dataKey="value" cx={28} cy={28} innerRadius={18} outerRadius={30} strokeWidth={0}>
+                  {usageBreakdown.map((b) => <Cell key={b.name} fill={b.color} />)}
+                </Pie>
+              </PieChart>
+              <ul className="space-y-1">
+                {usageBreakdown.map((b) => (
+                  <li key={b.name} className="flex items-center gap-2 text-sm" style={{ color: "rgba(203,213,225,0.95)" }}>
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: b.color }} aria-hidden />
+                    <span><strong>{b.name}</strong> ({b.meaning}): <span className="font-mono">{b.value}%</span></span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         )}
 
-        {/* Controls */}
-        <div className="flex items-center justify-between">
-          <div className="flex gap-1.5">
-            {(["bar", "line"] as ChartType[]).map((t) => (
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <p className="text-base font-semibold text-white">
+            {m.label} ({m.unit}) <span className="text-sm font-normal" style={{ color: "rgba(148,163,184,0.85)" }}>— {m.note}</span>
+          </p>
+          <div className="flex gap-1.5" role="tablist" aria-label="Metric">
+            {(["current", "power"] as Metric[]).map((key) => (
               <button
-                key={t}
-                onClick={() => setChartType(t)}
-                className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
+                key={key}
+                role="tab"
+                aria-selected={metric === key}
+                onClick={() => setMetric(key)}
+                className="px-3 py-1 rounded-full text-sm font-semibold transition-colors"
                 style={
-                  chartType === t
+                  metric === key
                     ? { background: "rgba(24,227,154,0.15)", color: "#18e39a", border: "1px solid rgba(24,227,154,0.3)" }
-                    : { background: "transparent", color: "rgba(100,116,139,0.8)", border: "1px solid rgba(255,255,255,0.08)" }
+                    : { background: "transparent", color: "rgba(148,163,184,0.9)", border: "1px solid rgba(255,255,255,0.12)" }
                 }
               >
-                {t === "bar" ? "Bar Chart" : "Line Chart"}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-1.5">
-            {(["power", "current"] as Metric[]).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMetric(m)}
-                className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
-                style={
-                  metric === m
-                    ? { background: "rgba(24,227,154,0.15)", color: "#18e39a", border: "1px solid rgba(24,227,154,0.3)" }
-                    : { background: "transparent", color: "rgba(100,116,139,0.8)", border: "1px solid rgba(255,255,255,0.08)" }
-                }
-              >
-                {m === "power" ? "Power (W)" : "Current (A)"}
+                {METRIC[key].label} ({METRIC[key].unit})
               </button>
             ))}
           </div>
         </div>
 
-        {/* Chart */}
-        <div style={{ height: 240 }}>
+        <div style={{ height: 260 }}>
           {readings === undefined ? (
             <div className="flex items-center justify-center h-full">
               <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-emerald-500" />
             </div>
-          ) : chartData.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-sm" style={{ color: "rgba(100,116,139,0.8)" }}>
-              No readings yet for this circuit.
+          ) : chartData.length < 2 ? (
+            <div className="flex items-center justify-center h-full text-base" style={{ color: "rgba(148,163,184,0.85)" }}>
+              Not enough readings yet for this circuit.
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              {chartType === "bar" ? (
-                <BarChart data={chartData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="label" stroke="rgba(100,116,139,0.6)" style={{ fontSize: 10 }} />
-                  <YAxis stroke="rgba(100,116,139,0.6)" style={{ fontSize: 10 }} unit={` ${yLabel}`} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: "rgb(15,23,42)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
-                    formatter={(v) => [`${v} ${yLabel}`, metric === "power" ? "Power" : "Current"]}
-                    cursor={{ fill: "rgba(255,255,255,0.04)" }}
+              <LineChart data={chartData} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <XAxis dataKey="time" stroke="rgba(148,163,184,0.7)" style={{ fontSize: 12 }} minTickGap={40} />
+                <YAxis stroke="rgba(148,163,184,0.7)" style={{ fontSize: 12 }} unit={` ${m.unit}`}
+                  domain={metric === "current" && maxAmps ? [0, (dataMax: number) => Math.max(dataMax, maxAmps * 1.05)] : [0, "auto"]} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "rgb(15,23,42)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 13 }}
+                  formatter={(v) => [`${v} ${m.unit}`, m.label]}
+                  cursor={false}
+                />
+                {metric === "current" && maxAmps ? (
+                  <ReferenceLine
+                    y={maxAmps}
+                    stroke="#f87171"
+                    strokeDasharray="6 4"
+                    label={{ value: `Configured rating ${maxAmps} A`, position: "insideTopRight", fill: "#f87171", fontSize: 12 }}
                   />
-                  <Bar dataKey={dataKey} fill={color} radius={[3, 3, 0, 0]} maxBarSize={18} />
-                </BarChart>
-              ) : (
-                <LineChart data={chartData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="label" stroke="rgba(100,116,139,0.6)" style={{ fontSize: 10 }} />
-                  <YAxis stroke="rgba(100,116,139,0.6)" style={{ fontSize: 10 }} unit={` ${yLabel}`} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: "rgb(15,23,42)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
-                    formatter={(v) => [`${v} ${yLabel}`, metric === "power" ? "Power" : "Current"]}
-                    cursor={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey={dataKey}
-                    stroke={color}
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4, fill: color }}
-                  />
-                </LineChart>
-              )}
+                ) : null}
+                <Line type="linear" dataKey={metric} stroke="#18e39a" strokeWidth={2} dot={false} isAnimationActive={false} />
+              </LineChart>
             </ResponsiveContainer>
           )}
         </div>
 
-        <p className="text-[10px] text-center" style={{ color: "rgba(100,116,139,0.5)" }}>
-          Showing last {chartData.length} readings · 5-second intervals
+        <p className="text-sm" style={{ color: "rgba(148,163,184,0.85)" }}>
+          {metric === "current"
+            ? maxAmps
+              ? `Dashed line: this circuit's configured rating (${maxAmps} A), used for HIGH LOAD status and overload alerts. Crossing it does not switch the circuit off.`
+              : "No current rating is configured for this circuit, so no threshold line is shown."
+            : "Thresholds are configured in amps — switch to Current (A) to see the configured rating."}
+          {" "}Showing the last {chartData.length} readings (about one every 5 s).
         </p>
       </div>
     </div>

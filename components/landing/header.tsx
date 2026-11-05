@@ -32,7 +32,7 @@ export function LandingHeader() {
         <div className="flex items-center gap-4">
           <Link href="/sign-up" className="hidden sm:block">
             <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-              Start Free Trial
+              Get started
             </Button>
           </Link>
 
@@ -58,7 +58,7 @@ export function LandingHeader() {
                 </Link>
                 <Link href="/sign-up" className="mt-4">
                   <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
-                    Start Free Trial
+                    Get started
                   </Button>
                 </Link>
               </nav>

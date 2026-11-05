@@ -117,6 +117,7 @@ relayStates: defineTable({
     v.literal("cloud"),      // command from web/mobile app
     v.literal("firmware")    // physical button press or device-initiated change
   ),
+  pending:   v.optional(v.boolean()), // cloud command sent, not yet confirmed by firmware
 })
   .index("by_hub",       ["hubId"])
   .index("by_hub_relay", ["hubId", "relayNum"]),
@@ -139,7 +140,9 @@ relayStates: defineTable({
     powerW: v.number(),
     timestamp: v.number(),
     receivedAt: v.number(),
-  }).index("by_circuit_time", ["circuitId", "timestamp"]),
+  })
+    .index("by_circuit_time", ["circuitId", "timestamp"])
+    .index("by_hub_time", ["hubId", "timestamp"]),
 
   userPreferences: defineTable({
     userId:              v.id("users"),
@@ -197,6 +200,7 @@ relayStates: defineTable({
       predictedKwh:   v.number(),
       confidenceLow:  v.number(),
       confidenceHigh: v.number(),
+      samples:        v.optional(v.number()),
     })),
   }).index("by_hub_time", ["hubId", "generatedAt"]),
 
@@ -209,6 +213,8 @@ relayStates: defineTable({
       relayNum:    v.number(),
       state:       v.boolean(),
       circuitName: v.string(),
+      // AI only proposes; the user confirms. Missing = legacy message (already executed).
+      status:      v.optional(v.union(v.literal("proposed"), v.literal("confirmed"), v.literal("cancelled"))),
     })),
     timestamp: v.number(),
     ttl:       v.number(),
@@ -232,5 +238,26 @@ relayStates: defineTable({
     joinedAt:  v.number(),
   })
     .index("by_hub",  ["hubId"])
-    .index("by_user", ["userId"]),
+    .index("by_user", ["userId"])
+    .index("by_hub_user", ["hubId", "userId"]),
+
+  // Per-day energy rollups, updated on every ingest frame. day = WAT date "YYYY-MM-DD".
+  hubDailyEnergy: defineTable({
+    hubId:  v.id("hubs"),
+    day:    v.string(),
+    dayStart: v.number(),   // Unix seconds of WAT midnight
+    kwh:    v.number(),
+    peakW:  v.number(),
+    vSum:   v.number(),
+    n:      v.number(),
+  }).index("by_hub_day", ["hubId", "day"]),
+
+  circuitDailyEnergy: defineTable({
+    circuitId: v.id("circuits"),
+    hubId:     v.id("hubs"),
+    day:       v.string(),
+    kwh:       v.number(),
+  })
+    .index("by_circuit_day", ["circuitId", "day"])
+    .index("by_hub_day", ["hubId", "day"]),
 });

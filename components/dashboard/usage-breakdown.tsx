@@ -1,4 +1,5 @@
 'use client'
+import { useRange } from '@/hooks/use-range'
 
 import { useMemo } from 'react'
 import { Card } from '@/components/ui/card'
@@ -19,10 +20,7 @@ export function UsageBreakdown({ rangeDays = 30 }: { rangeDays?: number }) {
   const { activeHub } = useHubData()
   const hubId = activeHub?._id
 
-  const { from, to } = useMemo(() => {
-    const to = Math.floor(Date.now() / 1000)
-    return { from: to - rangeDays * 86400, to }
-  }, [rangeDays])
+  const { from, to } = useRange(rangeDays)
 
   const circuits = useQuery(
     api.telemetry.getConsumptionByCircuit,
@@ -51,7 +49,10 @@ export function UsageBreakdown({ rangeDays = 30 }: { rangeDays?: number }) {
 
   return (
     <Card className="p-6">
-      <h3 className="text-lg font-semibold text-foreground mb-6">Usage Breakdown</h3>
+      <h3 className="text-xl lg:text-2xl font-semibold text-foreground">Energy by Load Type</h3>
+      <p className="text-sm text-muted-foreground mt-1 mb-6">
+        Per-circuit daily totals for the last {rangeDays} days, grouped by each circuit&apos;s load type. Circuits without a type count as General.
+      </p>
 
       {circuits === undefined && !!hubId ? (
         <div className="flex items-center justify-center h-32">
@@ -59,17 +60,17 @@ export function UsageBreakdown({ rangeDays = 30 }: { rangeDays?: number }) {
         </div>
       ) : breakdown.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">
-          No circuit data yet.
+          No per-circuit energy recorded in this range yet.
         </p>
       ) : (
         <div className="space-y-4">
           {breakdown.map((item) => (
             <div key={item.type}>
               <div className="flex justify-between items-center mb-2">
-                <span className="text-sm text-muted-foreground">{item.label}</span>
-                <span className="text-sm font-semibold text-foreground">
+                <span className="text-base text-muted-foreground">{item.label}</span>
+                <span className="text-base font-semibold text-foreground">
                   {item.percentage}%
-                  <span className="text-xs text-muted-foreground ml-1">({item.kwh} kWh)</span>
+                  <span className="text-sm text-muted-foreground ml-1">({item.kwh} kWh)</span>
                 </span>
               </div>
               <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">

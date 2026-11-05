@@ -15,7 +15,7 @@ export function ComparisonSection() {
               <span className="text-destructive line-through decoration-destructive/50">plain sight</span>
             </h2>
             <p className="text-muted-foreground leading-relaxed">
-              Manual meter reading and surprise utility bills are costing you thousands.
+              Without per-circuit data, you only see the total on your bill — not which circuit used it.
             </p>
             <div className="space-y-2">
               {[75, 60, 85, 40, 90].map((width, i) => (
@@ -34,12 +34,9 @@ export function ComparisonSection() {
             <h3 className="text-xl sm:text-2xl lg:text-3xl font-bold mt-2 mb-6">
               Total clarity in one dashboard
             </h3>
-            <div className="flex items-baseline gap-2 mb-4 flex-wrap">
-              <span className="text-4xl sm:text-5xl lg:text-6xl font-mono font-bold text-foreground">2,482,901</span>
-              <span className="text-muted-foreground">kWh</span>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Monitored in real-time today. Every watt accounted for.
+            {/* CONTENT NEEDED (team): a real, verified total once there is one to show. */}
+            <p className="text-base text-muted-foreground">
+              Current on every circuit, updated about every 5 seconds, with daily energy totals and in-app alerts.
             </p>
           </Card>
         </div>

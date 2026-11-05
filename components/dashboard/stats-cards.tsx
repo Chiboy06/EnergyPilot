@@ -4,9 +4,10 @@ import { Zap, Activity, AlertTriangle, Gauge } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useHubData } from "@/hooks/use-hub-data";
+import { formatClock } from "@/lib/circuit-status";
 
 export function StatsCards() {
-  const { hubState, circuitStates, activeHub } = useHubData();
+  const { hubState, circuitStates, activeHub, isFresh, lastUpdated } = useHubData();
   const anomalyCount = useQuery(
     api.anomalies.getUnresolvedCount,
     activeHub?._id ? { hubId: activeHub._id } : "skip"
@@ -14,97 +15,98 @@ export function StatsCards() {
 
   const totalKw = hubState ? (hubState.totalPowerW / 1000).toFixed(2) : "—";
   const voltage = hubState ? hubState.voltage.toFixed(1) : "—";
-  const activeCircuits = circuitStates.filter((c) => c.powerW > 0).length;
-  const totalCircuits = circuitStates.length || activeHub?.channelCount || 0;
+  const reported = circuitStates.filter((c) => c.hasReading);
+  const drawing = reported.filter((c) => c.currentAmps > 0).length;
+  const configured = circuitStates.length;
 
   const cards = [
     {
-      eyebrow: "Real-time · ESP32",
+      scope: "Whole system · live",
       label: "Total Load",
       value: totalKw,
       unit: "kW",
-      sub: `${totalCircuits} circuits monitored`,
+      sub: hubState ? "Estimated: current × voltage × 0.85 PF" : "Waiting for hub data",
       icon: Zap,
       color: "#18e39a",
-      glow: "rgba(24,227,154,0.35)",
     },
     {
-      eyebrow: "True-RMS · Mains",
+      scope: "Whole system · live",
       label: "Mains Voltage",
       value: voltage,
       unit: hubState ? "V" : "",
-      sub: hubState ? "within ±5% nominal" : "waiting for hub",
+      sub: hubState ? "Measured at the hub" : "Waiting for hub data",
       icon: Gauge,
       color: "#38bdf8",
-      glow: "rgba(56,189,248,0.35)",
     },
     {
-      eyebrow: `Breaker array · CH1–${totalCircuits || "?"}`,
-      label: "Active Circuits",
-      value: String(activeCircuits),
-      unit: `/ ${totalCircuits}`,
-      sub:
-        activeCircuits === totalCircuits && totalCircuits > 0
-          ? "All circuits live"
-          : totalCircuits > 0
-          ? `${totalCircuits - activeCircuits} idle`
-          : "no data",
+      scope: `CH1–${configured || "?"} · live`,
+      label: "Circuits Drawing Current",
+      value: String(drawing),
+      unit: `/ ${configured}`,
+      sub: configured === 0
+        ? "No circuits configured"
+        : reported.length < configured
+        ? `${configured - reported.length} channel(s) not reporting`
+        : `${configured - drawing} with no current`,
       icon: Activity,
-      color: "#18e39a",
-      glow: "rgba(24,227,154,0.35)",
+      color: "#a78bfa",
     },
     {
-      eyebrow: "SageMaker · live",
-      label: "Anomaly Status",
-      value: anomalyCount === 0 ? "Clear" : String(anomalyCount),
-      unit: anomalyCount === 0 ? "" : " alert" + (anomalyCount > 1 ? "s" : ""),
-      sub: anomalyCount === 0 ? "All circuits nominal" : `${anomalyCount} alert(s)`,
+      scope: "Detected alerts · open",
+      label: "Active Alerts",
+      value: anomalyCount === 0 ? "None" : anomalyCount >= 100 ? "99+" : String(anomalyCount),
+      unit: "",
+      sub: anomalyCount === 0 ? "No open voltage or load alerts" : "Open until the condition clears",
       icon: AlertTriangle,
       color: anomalyCount > 0 ? "rgba(255,107,107,1)" : "#18e39a",
-      glow: anomalyCount > 0 ? "rgba(255,107,107,0.35)" : "rgba(24,227,154,0.35)",
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-      {cards.map((c) => (
-        <div key={c.label} className="glass-card p-5 eg-anim-slide-up">
-          <div className="flex items-center justify-between mb-3">
-            <span
-              className="text-[10px] font-semibold tracking-[0.15em] uppercase"
-              style={{ color: "rgba(148,163,184,0.6)" }}
-            >
-              {c.eyebrow}
-            </span>
-            <div
-              className="w-8 h-8 rounded-[9px] grid place-items-center flex-none"
-              style={{ background: c.glow.replace("0.35", "0.15"), color: c.color }}
-            >
-              <c.icon size={15} />
-            </div>
-          </div>
-
-          <div className="mb-1 flex items-baseline gap-1.5">
-            <span
-              className="font-mono font-bold glow-text"
-              style={{ fontSize: 30, color: c.color }}
-            >
-              {c.value}
-            </span>
-            {c.unit && (
-              <span className="font-mono text-[14px]" style={{ color: "rgba(148,163,184,0.7)" }}>
-                {c.unit}
+    <div className="space-y-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {cards.map((c) => (
+          <div key={c.label} className="glass-card p-5 lg:p-6 eg-anim-slide-up">
+            <div className="flex items-center justify-between mb-3">
+              <span
+                className="text-xs font-semibold tracking-[0.12em] uppercase"
+                style={{ color: "rgba(148,163,184,0.8)" }}
+              >
+                {c.scope}
               </span>
-            )}
+              <div
+                className="w-9 h-9 rounded-[10px] grid place-items-center flex-none"
+                style={{ background: "rgba(255,255,255,0.06)", color: c.color }}
+                aria-hidden
+              >
+                <c.icon size={17} />
+              </div>
+            </div>
+
+            <p className="text-base lg:text-lg font-semibold text-white mb-1">{c.label}</p>
+
+            <div className="mb-1 flex items-baseline gap-2">
+              <span className="font-mono font-bold glow-text text-4xl xl:text-5xl" style={{ color: c.color }}>
+                {c.value}
+              </span>
+              {c.unit && (
+                <span className="font-mono text-lg" style={{ color: "rgba(148,163,184,0.85)" }}>
+                  {c.unit}
+                </span>
+              )}
+            </div>
+
+            <p className="text-sm" style={{ color: "rgba(148,163,184,0.85)" }}>
+              {c.sub}
+            </p>
           </div>
-
-          <p className="text-[11.5px]" style={{ color: "rgba(100,116,139,0.9)" }}>
-            {c.sub}
-          </p>
-
-          <p className="text-[12.5px] font-semibold mt-2 text-white">{c.label}</p>
-        </div>
-      ))}
+        ))}
+      </div>
+      <p className="text-sm" style={{ color: isFresh ? "rgba(148,163,184,0.85)" : "rgba(255,181,71,1)" }}>
+        {lastUpdated
+          ? `${isFresh ? "Live" : "Stale — no update for over 30 s"} · last reading ${formatClock(lastUpdated)} · the hub pushes about every 5 s`
+          : "No readings received from the hub yet"}
+      </p>
     </div>
   );
 }

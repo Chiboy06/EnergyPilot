@@ -2,8 +2,11 @@
 // User preference management — settings persistence for web and mobile.
 
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { ConvexError } from "convex/values";
+import { DEFAULT_TARIFF_NGN } from "./telemetry";
+import { getUser, requireUser } from "./access";
+import type { Id } from "./_generated/dataModel";
 
 const DEFAULTS = {
   loadWarningPct:        80,
@@ -18,34 +21,32 @@ const DEFAULTS = {
   timezone:              "Africa/Lagos",
 };
 
-async function requireUser(ctx: any) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new ConvexError("Not authenticated");
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", identity.subject))
-    .unique();
-  if (!user) throw new ConvexError("User not found");
-  return user;
-}
-
-// Get preferences — returns defaults merged with stored values if none exist yet
+// Get preferences — defaults merged with stored values. Secrets are never returned.
 export const get = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", identity.subject))
-      .unique();
+    const user = await getUser(ctx);
     if (!user) return null;
     const prefs = await ctx.db
       .query("userPreferences")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
-    if (!prefs) return { ...DEFAULTS, userId: user._id, apiKey: null };
-    return prefs;
+    if (!prefs) return { ...DEFAULTS, userId: user._id };
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { geminiApiKey, apiKey, ...safe } = prefs;
+    return safe;
+  },
+});
+
+// Server-only: the user's Gemini key for AI actions.
+export const getGeminiKeyInternal = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const prefs = await ctx.db
+      .query("userPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    return prefs?.geminiApiKey ?? null;
   },
 });
 
@@ -68,8 +69,14 @@ export const update = mutation({
     const user = await requireUser(ctx);
     const existing = await ctx.db
       .query("userPreferences")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
+    const warn = args.loadWarningPct ?? existing?.loadWarningPct ?? DEFAULTS.loadWarningPct;
+    const crit = args.autoCutoffPct  ?? existing?.autoCutoffPct  ?? DEFAULTS.autoCutoffPct;
+    if (warn < 50 || warn > 100 || crit < 50 || crit > 100) {
+      throw new ConvexError("Thresholds must be between 50% and 100%");
+    }
+    if (crit < warn) throw new ConvexError("Critical level cannot be below the warning level");
     const now = Date.now();
     if (existing) {
       await ctx.db.patch(existing._id, { ...args, updatedAt: now });
@@ -78,55 +85,6 @@ export const update = mutation({
         ...DEFAULTS, ...args, userId: user._id, updatedAt: now,
       });
     }
-  },
-});
-
-// Generate or return existing API key
-export const getOrCreateApiKey = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const user = await requireUser(ctx);
-    const existing = await ctx.db
-      .query("userPreferences")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
-      .unique();
-    if (existing?.apiKey) return existing.apiKey;
-    const apiKey = "eng_" + Array.from(
-      crypto.getRandomValues(new Uint8Array(24))
-    ).map((b) => b.toString(16).padStart(2, "0")).join("");
-    const now = Date.now();
-    if (existing) {
-      await ctx.db.patch(existing._id, { apiKey, updatedAt: now });
-    } else {
-      await ctx.db.insert("userPreferences", {
-        ...DEFAULTS, userId: user._id, apiKey, updatedAt: now,
-      });
-    }
-    return apiKey;
-  },
-});
-
-// Rotate API key — generates a new one, invalidating the old
-export const rotateApiKey = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const user = await requireUser(ctx);
-    const existing = await ctx.db
-      .query("userPreferences")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
-      .unique();
-    const apiKey = "eng_" + Array.from(
-      crypto.getRandomValues(new Uint8Array(24))
-    ).map((b) => b.toString(16).padStart(2, "0")).join("");
-    const now = Date.now();
-    if (existing) {
-      await ctx.db.patch(existing._id, { apiKey, updatedAt: now });
-    } else {
-      await ctx.db.insert("userPreferences", {
-        ...DEFAULTS, userId: user._id, apiKey, updatedAt: now,
-      });
-    }
-    return apiKey;
   },
 });
 
@@ -140,7 +98,7 @@ export const setGeminiApiKey = mutation({
     }
     const existing = await ctx.db
       .query("userPreferences")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
     const now = Date.now();
     if (existing) {
@@ -160,7 +118,7 @@ export const removeGeminiApiKey = mutation({
     const user = await requireUser(ctx);
     const existing = await ctx.db
       .query("userPreferences")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
     if (existing) {
       await ctx.db.patch(existing._id, { geminiApiKey: undefined, updatedAt: Date.now() });
@@ -168,53 +126,30 @@ export const removeGeminiApiKey = mutation({
   },
 });
 
-// Returns the actual key only to the authenticated owner — required for client-side
-// Gemini Live WebSocket sessions which cannot proxy through Convex Actions.
-export const getGeminiKeyForLiveSession = query({
-  args: {},
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", identity.subject))
-      .unique();
-    if (!user) return null;
-    const prefs = await ctx.db
-      .query("userPreferences")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
-      .unique();
-    return prefs?.geminiApiKey ?? null;
-  },
-});
-
-// Get tariff rate from the user's active facility
+// Tariff for the user's active facility. isDefault = no tariff saved yet.
 export const getTariffRate = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return { tariffPerKwh: 68, currency: "NGN" };
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", identity.subject))
-      .unique();
-    if (!user?.activeFacilityId) return { tariffPerKwh: 68, currency: "NGN" };
-    const facility: any = await ctx.db.get(user.activeFacilityId as any);
-    return {
-      tariffPerKwh: facility?.tariffPerKwh ?? 68,
-      currency:     facility?.tariffCurrency ?? "NGN",
-    };
+    const fallback = { tariffPerKwh: DEFAULT_TARIFF_NGN, currency: "NGN", isDefault: true };
+    const user = await getUser(ctx);
+    if (!user?.activeFacilityId) return fallback;
+    const facility = await ctx.db.get(user.activeFacilityId as Id<"facilities">);
+    if (!facility?.tariffPerKwh) return fallback;
+    return { tariffPerKwh: facility.tariffPerKwh, currency: facility.tariffCurrency ?? "NGN", isDefault: false };
   },
 });
 
-// Set tariff rate on the user's active facility
+// Set tariff rate on the user's active facility (owner only)
 export const setTariffRate = mutation({
   args: { tariffPerKwh: v.number() },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
+    if (!Number.isFinite(args.tariffPerKwh) || args.tariffPerKwh <= 0 || args.tariffPerKwh > 10000) {
+      throw new ConvexError("Tariff must be a positive amount per kWh");
+    }
     if (!user.activeFacilityId) throw new ConvexError("No active facility");
-    const facility: any = await ctx.db.get(user.activeFacilityId as any);
-    if (!facility || facility.userId !== user._id) throw new ConvexError("Facility not found");
+    const facility = await ctx.db.get(user.activeFacilityId as Id<"facilities">);
+    if (!facility || facility.userId !== user._id) throw new ConvexError("Only the facility owner can set the tariff");
     await ctx.db.patch(facility._id, { tariffPerKwh: args.tariffPerKwh });
   },
 });
@@ -223,21 +158,16 @@ export const setTariffRate = mutation({
 export const getGeminiKeyStatus = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return { hasKey: false, maskedKey: null };
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", identity.subject))
-      .unique();
+    const user = await getUser(ctx);
     if (!user) return { hasKey: false, maskedKey: null };
     const prefs = await ctx.db
       .query("userPreferences")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
     if (!prefs?.geminiApiKey) return { hasKey: false, maskedKey: null };
     return {
       hasKey:    true,
-      maskedKey: prefs.geminiApiKey.substring(0, 8) + "••••••••••••••••••••",
+      maskedKey: prefs.geminiApiKey.substring(0, 4) + "••••••••••••" + prefs.geminiApiKey.slice(-4),
     };
   },
 });

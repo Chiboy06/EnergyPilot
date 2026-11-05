@@ -12,23 +12,19 @@
 
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { ConvexError } from "convex/values";
+import { getUser, requireUser, getHubReadAccess, requireHubOwner } from "./access";
 
-// ── Helper: resolve authenticated user or throw ───────────────────────────
-// Prefers JWT verification; falls back to clerkId arg when
-// CLERK_JWT_ISSUER_DOMAIN is not yet set in the Convex environment.
-async function requireUser(ctx: any, clerkIdFallback?: string) {
-  const identity = await ctx.auth.getUserIdentity();
-  const clerkId = identity?.subject ?? clerkIdFallback;
-  if (!clerkId) throw new ConvexError("Not authenticated");
-
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", clerkId))
-    .unique();
-
-  if (!user) throw new ConvexError("User record not found");
-  return user;
+// Normalise a hub serial to "AA:BB:CC:DD:EE:FF". Throws unless it is exactly 12 hex digits,
+// otherwise the hub would never match its telemetry.
+function normaliseMac(raw: string): string {
+  const hex = raw.toUpperCase().replace(/[^A-F0-9]/g, "");
+  if (hex.length !== 12 || raw.replace(/[\s:\-.]/g, "").length !== 12) {
+    throw new ConvexError("Serial must be the hub's 12-digit MAC address, e.g. EC:E3:34:66:98:3C");
+  }
+  return hex.replace(/(.{2})(?=.)/g, "$1:");
 }
 
 // ── Step 1: Create facility ───────────────────────────────────────────────
@@ -82,15 +78,12 @@ export const registerHub = mutation({
     const user = await requireUser(ctx);
 
     // Verify the facility belongs to this user
-    const facility = await ctx.db.get(args.facilityId);
-    if (!facility || facility.userId !== user._id) {
+    const hubs = await listAccessibleHubs(ctx, user._id);
+    if (!hubs.some((h) => h.facilityId === args.facilityId)) {
       throw new ConvexError("Facility not found");
     }
 
-    // Normalise MAC address to uppercase with colons
-    const mac = args.macAddress.toUpperCase().replace(/[^A-F0-9]/g, "").replace(
-      /(.{2})(?=.)/g, "$1:"
-    );
+    const mac = normaliseMac(args.macAddress);
 
     // Check for duplicate MAC address across all users
     const existing = await ctx.db
@@ -177,9 +170,9 @@ export const createCircuits = mutation({
 // ── Step 4: Complete onboarding (all-in-one) ─────────────────────────────
 // Creates facility, registers hub, and auto-names circuits "Circuit 1…N".
 // Users rename individual circuits (appliances) from the dashboard later.
-// clerkId is accepted but ignored — JWT is authoritative.
 export const completeOnboarding = mutation({
   args: {
+    // shortcut: accepted+ignored for old native builds, delete after next EAS release
     clerkId:         v.optional(v.string()),
     serialNumber:    v.string(),
     hubName:         v.string(),
@@ -199,7 +192,9 @@ export const completeOnboarding = mutation({
     breakerCapacity: v.number(),
   },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx, args.clerkId);
+    const user = await requireUser(ctx);
+    if (!(args.breakerCapacity > 0)) throw new ConvexError("Breaker capacity must be greater than 0 A");
+    const mac = normaliseMac(args.serialNumber);
 
     // 1. Create facility
     const facilityId = await ctx.db.insert("facilities", {
@@ -211,12 +206,6 @@ export const completeOnboarding = mutation({
     });
 
     await ctx.db.patch(user._id, { activeFacilityId: facilityId });
-
-    // 2. Normalise MAC address — accepts "EC:E3:34:66:98:3C" or plain hex
-    const mac = args.serialNumber
-      .toUpperCase()
-      .replace(/[^A-F0-9]/g, "")
-      .replace(/(.{2})(?=.)/g, "$1:");
 
     const existingHub = await ctx.db
       .query("hubs")
@@ -257,47 +246,49 @@ export const completeOnboarding = mutation({
 
 // ── Queries ───────────────────────────────────────────────────────────────
 
-// List all facilities for the current user
+// Hubs the user can see: owned ones plus ones joined with an access code.
+async function listAccessibleHubs(ctx: QueryCtx, userId: Id<"users">) {
+  const owned = await ctx.db
+    .query("hubs")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .take(50);
+  const memberships = await ctx.db
+    .query("hubMembers")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .take(50);
+  const shared = [];
+  for (const m of memberships) {
+    const hub = await ctx.db.get(m.hubId);
+    if (hub) shared.push({ ...hub, role: m.role });
+  }
+  return [...owned.map((h) => ({ ...h, role: "owner" as const })), ...shared];
+}
+
+// List facilities the current user owns or has joined
 export const listFacilities = query({
+  // shortcut: clerkId accepted+ignored for old native builds, delete after next EAS release
   args: { clerkId: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    const clerkId = identity?.subject ?? args.clerkId;
-    if (!clerkId) return [];
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
-      .unique();
-
+  handler: async (ctx) => {
+    const user = await getUser(ctx);
     if (!user) return [];
-
-    return await ctx.db
-      .query("facilities")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .collect();
+    const hubs = await listAccessibleHubs(ctx, user._id);
+    const facilities = [];
+    for (const id of new Set(hubs.map((h) => h.facilityId))) {
+      const f = await ctx.db.get(id);
+      if (f) facilities.push(f);
+    }
+    return facilities;
   },
 });
 
-// List all hubs for the current user
+// List hubs the current user owns or has joined, each with the caller's role
 export const listHubs = query({
+  // shortcut: clerkId accepted+ignored for old native builds, delete after next EAS release
   args: { clerkId: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    const clerkId = identity?.subject ?? args.clerkId;
-    if (!clerkId) return [];
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
-      .unique();
-
+  handler: async (ctx) => {
+    const user = await getUser(ctx);
     if (!user) return [];
-
-    return await ctx.db
-      .query("hubs")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .collect();
+    return await listAccessibleHubs(ctx, user._id);
   },
 });
 
@@ -305,23 +296,11 @@ export const listHubs = query({
 export const listCircuits = query({
   args: { hubId: v.id("hubs") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
-
-    if (!user) return [];
-
-    const hub = await ctx.db.get(args.hubId);
-    if (!hub || hub.userId !== user._id) return [];
-
+    if (!(await getHubReadAccess(ctx, args.hubId))) return [];
     return await ctx.db
       .query("circuits")
       .withIndex("by_hub", (q) => q.eq("hubId", args.hubId))
-      .collect();
+      .take(64);
   },
 });
 
@@ -329,10 +308,10 @@ export const listCircuits = query({
 export const renameHub = mutation({
   args: { hubId: v.id("hubs"), name: v.string() },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
-    const hub = await ctx.db.get(args.hubId);
-    if (!hub || hub.userId !== user._id) throw new ConvexError("Hub not found");
-    await ctx.db.patch(args.hubId, { name: args.name.trim() });
+    await requireHubOwner(ctx, args.hubId);
+    const name = args.name.trim();
+    if (!name) throw new ConvexError("Name cannot be empty");
+    await ctx.db.patch(args.hubId, { name });
   },
 });
 
@@ -341,8 +320,8 @@ export const setActiveFacility = mutation({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
 
-    const facility = await ctx.db.get(args.facilityId);
-    if (!facility || facility.userId !== user._id) {
+    const hubs = await listAccessibleHubs(ctx, user._id);
+    if (!hubs.some((h) => h.facilityId === args.facilityId)) {
       throw new ConvexError("Facility not found");
     }
 

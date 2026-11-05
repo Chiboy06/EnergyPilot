@@ -37,7 +37,7 @@ export function MLInsights() {
   return (
     <Card className="bg-card border-border p-4 md:p-6 rounded-lg">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 md:mb-6">
-        <h3 className="text-base md:text-lg font-semibold text-foreground">Live Insights</h3>
+        <h3 className="text-xl lg:text-2xl font-semibold text-foreground">Recent Alerts</h3>
         <span className="text-xs text-muted-foreground">
           {isLoading ? 'Loading…' : `Updated ${updatedLabel}`}
         </span>
@@ -53,9 +53,9 @@ export function MLInsights() {
             <CheckCircle2 className="h-5 w-5 text-emerald-400" />
           </div>
           <div>
-            <p className="font-medium text-foreground text-sm">All systems nominal</p>
+            <p className="font-medium text-foreground text-base">No alerts recorded</p>
             <p className="text-xs text-muted-foreground mt-1">
-              No anomalies detected across all monitored circuits.
+              No voltage or load alerts have been detected on this hub.
             </p>
           </div>
         </div>

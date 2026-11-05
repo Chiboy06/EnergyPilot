@@ -18,22 +18,23 @@ export default function AnalyticsPage() {
     <div className="space-y-6 eg-anim-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
-          <p className="text-[10px] font-semibold tracking-[0.16em] uppercase mb-1.5" style={{ color: "rgba(148,163,184,0.55)" }}>
-            Reporting · Timestream
+          <p className="text-xs font-semibold tracking-[0.12em] uppercase mb-1.5" style={{ color: "rgba(148,163,184,0.8)" }}>
+            History · not live
           </p>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Analytics</h1>
-          <p className="text-[13px] mt-0.5" style={{ color: "rgba(100,116,139,0.9)" }}>
-            Historical consumption, breakdown and efficiency benchmarks
+          <h1 className="text-3xl lg:text-4xl font-bold text-white tracking-tight">Analytics</h1>
+          <p className="text-base lg:text-lg mt-1" style={{ color: "rgba(148,163,184,0.85)" }}>
+            Daily energy totals for the last {rangeDays} days (WAT calendar days)
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" role="tablist" aria-label="Time range">
           {RANGES.map(r => (
             <button key={r.label} onClick={() => setRangeDays(r.days)}
-              className="px-3 py-1.5 rounded-full text-xs font-semibold transition-colors"
+              role="tab" aria-selected={rangeDays === r.days}
+              className="px-3.5 py-1.5 rounded-full text-sm font-semibold transition-colors"
               style={rangeDays === r.days
                 ? { background: "rgba(24,227,154,0.15)", color: "#18e39a", border: "1px solid rgba(24,227,154,0.3)" }
                 : { background: "rgba(255,255,255,0.05)", color: "rgba(148,163,184,0.7)", border: "1px solid rgba(255,255,255,0.08)" }}>
-              {r.label}
+              Last {r.days} days
             </button>
           ))}
         </div>

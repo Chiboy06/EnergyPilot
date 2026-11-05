@@ -1,9 +1,10 @@
 'use client'
+import { useRange } from '@/hooks/use-range'
 
 import { useMemo, useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { useQuery } from 'convex/react'
 import { api } from '@/convex/_generated/api'
 import { useHubData } from '@/hooks/use-hub-data'
@@ -15,15 +16,13 @@ export function ConsumptionChart({ rangeDays = 30 }: { rangeDays?: number }) {
   const { activeHub } = useHubData()
   const hubId = activeHub?._id
 
-  const { from, to } = useMemo(() => {
-    const to = Math.floor(Date.now() / 1000)
-    return { from: to - rangeDays * 86400, to }
-  }, [rangeDays])
+  const { from, to } = useRange(rangeDays)
 
   const days = useQuery(
     api.telemetry.getConsumptionByDay,
     hubId ? { hubId, fromTimestamp: from, toTimestamp: to } : 'skip'
   )
+  const tariff = useQuery(api.preferences.getTariffRate, {})
 
   // Days come back newest-first; reverse for chronological chart
   const chartData = useMemo(() => {
@@ -31,7 +30,7 @@ export function ConsumptionChart({ rangeDays = 30 }: { rangeDays?: number }) {
     return [...days]
       .reverse()
       .map(d => ({
-        date:        d.date.slice(5), // "MM-DD"
+        date:        new Date(d.date + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
         consumption: d.totalKwh,
         cost:        d.costNgn,
       }))
@@ -41,27 +40,37 @@ export function ConsumptionChart({ rangeDays = 30 }: { rangeDays?: number }) {
 
   return (
     <Card className="p-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
         <div>
-          <h3 className="text-lg font-semibold text-foreground">Consumption Trend</h3>
-          <p className="text-sm text-muted-foreground">
-            Daily energy usage — last {days ? days.length : 30} days
+          <h3 className="text-xl lg:text-2xl font-semibold text-foreground">Daily Energy Use</h3>
+          <p className="text-sm lg:text-base text-muted-foreground mt-1">
+            {metric === 'consumption'
+              ? 'Total kWh per calendar day (WAT), whole system'
+              : `Estimated cost per day at ₦${tariff?.tariffPerKwh ?? '…'}/kWh${tariff?.isDefault ? ' (app default — set your tariff in Settings → Account)' : ' (your tariff)'}`}
+            {' · '}selected range: last {rangeDays} days{days ? ` · ${days.length} day(s) with data` : ''}
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Each bar is one day&apos;s total, summed from every 5-second reading received that day. Days the hub was offline are missing or lower.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2" role="tablist" aria-label="Metric">
           <Button
             variant={metric === 'consumption' ? 'default' : 'outline'}
             size="sm"
+            aria-selected={metric === 'consumption'}
+            role="tab"
             onClick={() => setMetric('consumption')}
           >
-            kWh
+            Energy (kWh)
           </Button>
           <Button
             variant={metric === 'cost' ? 'default' : 'outline'}
             size="sm"
+            aria-selected={metric === 'cost'}
+            role="tab"
             onClick={() => setMetric('cost')}
           >
-            Cost ₦
+            Cost (₦, est.)
           </Button>
         </div>
       </div>
@@ -70,58 +79,32 @@ export function ConsumptionChart({ rangeDays = 30 }: { rangeDays?: number }) {
         <div className="flex items-center justify-center h-[300px]">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500" />
         </div>
-      ) : chartData.length === 0 ? (
-        <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
-          No data yet — readings will appear once your hub sends telemetry.
+      ) : chartData.length < 2 ? (
+        <div className="flex items-center justify-center h-[300px] text-base text-muted-foreground text-center px-4">
+          Not enough data yet — daily totals appear after the hub has reported on at least two days.
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={300}>
-          <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="colorMain" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="rgb(16,185,129)" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="rgb(16,185,129)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(139,148,158,0.1)" />
-            <XAxis
-              dataKey="date"
-              stroke="rgb(139,148,158)"
-              style={{ fontSize: '12px' }}
-              interval="preserveStartEnd"
-            />
+          <BarChart data={chartData} margin={{ top: 10, right: 16, left: 8, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(139,148,158,0.1)" vertical={false} />
+            <XAxis dataKey="date" stroke="rgb(139,148,158)" style={{ fontSize: '13px' }} interval="preserveStartEnd" />
             <YAxis
               stroke="rgb(139,148,158)"
-              style={{ fontSize: '12px' }}
-              label={{
-                value: metric === 'consumption' ? 'kWh' : '₦',
-                angle: -90,
-                position: 'insideLeft',
-              }}
+              style={{ fontSize: '13px' }}
+              label={{ value: metric === 'consumption' ? 'kWh per day' : '₦ per day', angle: -90, position: 'insideLeft', fill: 'rgb(139,148,158)', fontSize: 13 }}
             />
             <Tooltip
-              contentStyle={{
-                backgroundColor: 'rgb(22,27,34)',
-                border: '1px solid rgb(48,54,61)',
-                borderRadius: '8px',
-              }}
+              contentStyle={{ backgroundColor: 'rgb(22,27,34)', border: '1px solid rgb(48,54,61)', borderRadius: '8px', fontSize: 13 }}
               formatter={(value) => {
-                const v = Number(value ?? 0);
+                const v = Number(value ?? 0)
                 return metric === 'consumption'
-                  ? [`${v.toFixed(2)} kWh`, 'Consumption']
-                  : [`₦${v.toFixed(2)}`, 'Cost'];
+                  ? [`${v.toFixed(2)} kWh`, 'Energy that day']
+                  : [`₦${v.toFixed(2)}`, 'Estimated cost that day']
               }}
-              cursor={false}
+              cursor={{ fill: 'rgba(255,255,255,0.04)' }}
             />
-            <Area
-              type="monotone"
-              dataKey={metric}
-              stroke="rgb(16,185,129)"
-              fillOpacity={1}
-              fill="url(#colorMain)"
-              strokeWidth={1.8}
-            />
-          </AreaChart>
+            <Bar dataKey={metric} fill="rgb(16,185,129)" radius={[3, 3, 0, 0]} maxBarSize={36} />
+          </BarChart>
         </ResponsiveContainer>
       )}
     </Card>

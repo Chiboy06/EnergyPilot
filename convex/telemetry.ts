@@ -11,14 +11,72 @@
 //   3. Upserts hubState (latest live values)
 //   4. Inserts hubReadings (time-series aggregate)
 //   5. For each channel: resolves circuit by channelIndex, inserts channelReadings
+//   6. Adds the frame's energy to the daily rollups (hubDailyEnergy / circuitDailyEnergy)
 
 import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
-import { ConvexError } from "convex/values";
+import type { MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
+import { getHubReadAccess } from "./access";
 
-const POWER_FACTOR = 0.85;
+// Power is estimated as V × I × PF: the hub measures current and voltage only.
+export const POWER_FACTOR = 0.85;
 const ONLINE_THRESHOLD_MS = 30_000; // 30 seconds
+// shortcut: each frame counts as one 5 s interval of energy; upgrade to measured
+// inter-frame gaps if the firmware cadence ever changes.
+export const INTERVAL_SECONDS = 5;
+const WAT_OFFSET = 3600; // Nigeria (WAT) = UTC+1, no DST
+
+// Nigeria grid carbon intensity — kg CO2 per kWh (IEA Nigeria 2023)
+const NIGERIA_CARBON_KG_PER_KWH = 0.43;
+export const DEFAULT_TARIFF_NGN = 68;
+
+// WAT calendar day for a Unix-seconds timestamp.
+export function watDay(tsSec: number): { day: string; dayStart: number } {
+  const dayStart = Math.floor((tsSec + WAT_OFFSET) / 86400) * 86400 - WAT_OFFSET;
+  const day = new Date((dayStart + WAT_OFFSET) * 1000).toISOString().slice(0, 10);
+  return { day, dayStart };
+}
+
+export const frameKwh = (powerW: number) => (powerW * INTERVAL_SECONDS) / 3600 / 1000;
+
+// Add one frame to the daily rollups.
+export async function addToRollups(
+  ctx: MutationCtx,
+  hubId: Id<"hubs">,
+  tsSec: number,
+  voltage: number,
+  totalPowerW: number,
+  circuitPowers: { circuitId: Id<"circuits">; powerW: number }[]
+) {
+  const { day, dayStart } = watDay(tsSec);
+  const hubDay = await ctx.db
+    .query("hubDailyEnergy")
+    .withIndex("by_hub_day", (q) => q.eq("hubId", hubId).eq("day", day))
+    .unique();
+  if (hubDay) {
+    await ctx.db.patch(hubDay._id, {
+      kwh:   hubDay.kwh + frameKwh(totalPowerW),
+      peakW: Math.max(hubDay.peakW, totalPowerW),
+      vSum:  hubDay.vSum + voltage,
+      n:     hubDay.n + 1,
+    });
+  } else {
+    await ctx.db.insert("hubDailyEnergy", {
+      hubId, day, dayStart, kwh: frameKwh(totalPowerW), peakW: totalPowerW, vSum: voltage, n: 1,
+    });
+  }
+
+  for (const { circuitId, powerW } of circuitPowers) {
+    const row = await ctx.db
+      .query("circuitDailyEnergy")
+      .withIndex("by_circuit_day", (q) => q.eq("circuitId", circuitId).eq("day", day))
+      .unique();
+    if (row) await ctx.db.patch(row._id, { kwh: row.kwh + frameKwh(powerW) });
+    else await ctx.db.insert("circuitDailyEnergy", { circuitId, hubId, day, kwh: frameKwh(powerW) });
+  }
+}
 
 // ── Internal: ingest one telemetry frame ──────────────────────────────────
 export const ingest = internalMutation({
@@ -96,6 +154,7 @@ export const ingest = internalMutation({
     // Only process channels up to hub.channelCount — ignore extras if firmware
     // sends more than expected (defensive, should never happen).
     const channelCount = Math.min(args.channels.length, hub.channelCount);
+    const circuitPowers: { circuitId: Id<"circuits">; powerW: number }[] = [];
 
     for (let i = 0; i < channelCount; i++) {
       const circuit = await ctx.db
@@ -109,6 +168,7 @@ export const ingest = internalMutation({
 
       const currentAmps = args.channels[i];
       const powerW      = currentAmps * args.voltage * POWER_FACTOR;
+      circuitPowers.push({ circuitId: circuit._id, powerW });
 
       await ctx.db.insert("channelReadings", {
         circuitId:   circuit._id,
@@ -120,6 +180,9 @@ export const ingest = internalMutation({
         receivedAt:  now,
       });
     }
+
+    // 5. Daily energy rollups
+    await addToRollups(ctx, hub._id, args.timestamp, args.voltage, totalPowerW, circuitPowers);
 
     // Detect anomalies from this frame and record if new
     await ctx.runMutation(internal.anomalies.detectAndRecord, {
@@ -134,24 +197,51 @@ export const ingest = internalMutation({
   },
 });
 
+// ── Internal: one-off backfill of rollups from stored readings ────────────
+// Run once after deploying rollups:
+//   npx convex run telemetry:backfillRollups '{"hubId":"<id>","before":<unix seconds of deploy>}'
+// Only readings older than `before` are counted, so frames ingested after the
+// deploy (already rolled up live) are not double counted. Re-schedules itself in batches.
+export const backfillRollups = internalMutation({
+  args: {
+    hubId:  v.id("hubs"),
+    before: v.number(),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const page = await ctx.db
+      .query("hubReadings")
+      .withIndex("by_hub_time", (q) => q.eq("hubId", args.hubId).lt("timestamp", args.before))
+      .paginate({ numItems: 200, cursor: args.cursor ?? null });
+
+    for (const r of page.page) {
+      const channel = await ctx.db
+        .query("channelReadings")
+        .withIndex("by_hub_time", (q) => q.eq("hubId", args.hubId).eq("timestamp", r.timestamp))
+        .take(64);
+      await addToRollups(
+        ctx, args.hubId, r.timestamp, r.voltage, r.totalPowerW,
+        channel.map((c) => ({ circuitId: c.circuitId, powerW: c.powerW }))
+      );
+    }
+
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.telemetry.backfillRollups, {
+        hubId: args.hubId, before: args.before, cursor: page.continueCursor,
+      });
+    }
+  },
+});
+
 // ── Public: get live hub state (for dashboard cards) ─────────────────────
 // Real-time — Convex pushes updates to the client automatically.
-// Returns null if hub not found or user doesn't own it.
+// Returns null if hub not found or the caller has no access.
+// Note: isOnline is only re-evaluated when data changes; clients should derive
+// freshness from lastUpdated with their own clock.
 export const getHubState = query({
   args: { hubId: v.id("hubs") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
-
-    if (!user) return null;
-
-    const hub = await ctx.db.get(args.hubId);
-    if (!hub || hub.userId !== user._id) return null;
+    if (!(await getHubReadAccess(ctx, args.hubId))) return null;
 
     const state = await ctx.db
       .query("hubState")
@@ -160,7 +250,6 @@ export const getHubState = query({
 
     if (!state) return null;
 
-    // Derive isOnline from lastUpdated timestamp
     const isOnline = Date.now() - state.lastUpdated < ONLINE_THRESHOLD_MS;
     return { ...state, isOnline };
   },
@@ -174,21 +263,8 @@ export const getHubReadings = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
-
-    if (!user) return [];
-
-    const hub = await ctx.db.get(args.hubId);
-    if (!hub || hub.userId !== user._id) return [];
-
-    const limit = args.limit ?? 100;
-
+    if (!(await getHubReadAccess(ctx, args.hubId))) return [];
+    const limit = Math.min(Math.max(1, args.limit ?? 100), 500);
     return await ctx.db
       .query("hubReadings")
       .withIndex("by_hub_time", (q) => q.eq("hubId", args.hubId))
@@ -204,21 +280,9 @@ export const getCircuitReadings = query({
     limit:     v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
-
-    if (!user) return [];
-
     const circuit = await ctx.db.get(args.circuitId);
-    if (!circuit || circuit.userId !== user._id) return [];
-
-    const limit = args.limit ?? 100;
-
+    if (!circuit || !(await getHubReadAccess(ctx, circuit.hubId))) return [];
+    const limit = Math.min(Math.max(1, args.limit ?? 100), 500);
     return await ctx.db
       .query("channelReadings")
       .withIndex("by_circuit_time", (q) => q.eq("circuitId", args.circuitId))
@@ -227,13 +291,8 @@ export const getCircuitReadings = query({
   },
 });
 
-// Nigeria grid carbon intensity — kg CO2 per kWh (IEA Nigeria 2023)
-const NIGERIA_CARBON_KG_PER_KWH = 0.43;
-
-// ── Public: aggregate hub readings by calendar day ────────────────────────
-// Reads at most 25,000 documents total (budget spread across days) to avoid
-// Convex's 32k-per-execution limit. Energy values are extrapolated when the
-// sample is smaller than a full day of 5-second readings (17,280/day).
+// ── Public: energy per WAT calendar day, from the daily rollups ───────────
+// Totals count every received 5 s frame; days with no data are omitted.
 // Returns newest day first.
 export const getConsumptionByDay = query({
   args: {
@@ -242,84 +301,36 @@ export const getConsumptionByDay = query({
     toTimestamp:   v.number(),   // Unix epoch seconds
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
-    if (!user) return [];
-    const hub = await ctx.db.get(args.hubId);
-    if (!hub || hub.userId !== user._id) return [];
-    const facility = await ctx.db.get(hub.facilityId);
-    const tariffPerKwh = facility?.tariffPerKwh ?? 68;
+    const access = await getHubReadAccess(ctx, args.hubId);
+    if (!access) return [];
+    const facility = await ctx.db.get(access.hub.facilityId);
+    const tariffPerKwh = facility?.tariffPerKwh ?? DEFAULT_TARIFF_NGN;
 
-    const INTERVAL_SECONDS = 5;
-    const WAT_OFFSET        = 3600; // UTC+1
+    const rows = await ctx.db
+      .query("hubDailyEnergy")
+      .withIndex("by_hub_day", (q) =>
+        q.eq("hubId", args.hubId)
+         .gte("day", watDay(args.fromTimestamp).day)
+         .lte("day", watDay(args.toTimestamp).day)
+      )
+      .take(400);
 
-    // Build WAT-aligned day boundaries covering the requested range
-    const firstDayStart =
-      Math.floor((args.fromTimestamp + WAT_OFFSET) / 86400) * 86400 - WAT_OFFSET;
-    const dayStarts: number[] = [];
-    for (let d = firstDayStart; d < args.toTimestamp; d += 86400) {
-      dayStarts.push(d);
-    }
-    if (dayStarts.length === 0) return [];
-
-    // Spread 25,000-read budget evenly across days
-    const samplePerDay = Math.max(10, Math.floor(25000 / dayStarts.length));
-
-    const dayRows = await Promise.all(
-      dayStarts.map(async (dayFrom) => {
-        const dayTo      = dayFrom + 86400;
-        const rangeFrom  = Math.max(dayFrom, args.fromTimestamp);
-        const rangeTo    = Math.min(dayTo,   args.toTimestamp);
-        const expectedN  = (rangeTo - rangeFrom) / INTERVAL_SECONDS;
-
-        const readings = await ctx.db
-          .query("hubReadings")
-          .withIndex("by_hub_time", (q) =>
-            q.eq("hubId", args.hubId)
-             .gte("timestamp", rangeFrom)
-             .lt("timestamp",  rangeTo)
-          )
-          .take(samplePerDay);
-
-        if (readings.length === 0) return null;
-
-        // If we hit the sample cap, scale up proportionally
-        const scale =
-          readings.length >= samplePerDay ? expectedN / samplePerDay : 1;
-
-        const sampledKwh = readings.reduce((s, r) => s + r.totalPowerW, 0)
-          * INTERVAL_SECONDS / 3600 / 1000;
-        const totalKwh = sampledKwh * scale;
-        const peakW    = Math.max(...readings.map(r => r.totalPowerW));
-        const avgV     =
-          readings.reduce((s, r) => s + r.voltage, 0) / readings.length;
-
-        return {
-          timestamp: dayFrom,
-          date:      new Date(dayFrom * 1000).toISOString().split("T")[0],
-          totalKwh:  Math.round(totalKwh * 1000) / 1000,
-          peakW:     Math.round(peakW),
-          avgV:      Math.round(avgV * 10) / 10,
-          costNgn:   Math.round(totalKwh * tariffPerKwh * 100) / 100,
-          carbonKg:  Math.round(totalKwh * NIGERIA_CARBON_KG_PER_KWH * 1000) / 1000,
-        };
-      })
-    );
-
-    return dayRows
-      .filter((d): d is NonNullable<typeof d> => d !== null)
+    return rows
+      .map((d) => ({
+        timestamp: d.dayStart,
+        date:      d.day,
+        totalKwh:  Math.round(d.kwh * 1000) / 1000,
+        peakW:     Math.round(d.peakW),
+        avgV:      Math.round((d.vSum / d.n) * 10) / 10,
+        readings:  d.n,
+        costNgn:   Math.round(d.kwh * tariffPerKwh * 100) / 100,
+        carbonKg:  Math.round(d.kwh * NIGERIA_CARBON_KG_PER_KWH * 1000) / 1000,
+      }))
       .sort((a, b) => b.timestamp - a.timestamp);
   },
 });
 
-// ── Public: per-circuit energy totals for a time range ────────────────────
-// Uses sampling: reads the most recent N channel readings per circuit (newest
-// first), computes average power, then multiplies by total period hours.
-// Budget: 25,000 reads ÷ circuit count, capped at 2,000 per circuit.
+// ── Public: per-circuit energy totals for a time range, from rollups ──────
 export const getConsumptionByCircuit = query({
   args: {
     hubId:         v.id("hubs"),
@@ -327,58 +338,35 @@ export const getConsumptionByCircuit = query({
     toTimestamp:   v.number(),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
-    if (!user) return [];
-    const hub = await ctx.db.get(args.hubId);
-    if (!hub || hub.userId !== user._id) return [];
+    if (!(await getHubReadAccess(ctx, args.hubId))) return [];
 
     const circuits = await ctx.db
       .query("circuits")
       .withIndex("by_hub", (q) => q.eq("hubId", args.hubId))
-      .collect();
-
+      .take(64);
     if (circuits.length === 0) return [];
 
-    // Spread 25,000-read budget across circuits, cap at 2,000 per circuit
-    const maxPerCircuit = Math.min(
-      2000,
-      Math.floor(25000 / circuits.length)
-    );
-    const timeRangeHours = (args.toTimestamp - args.fromTimestamp) / 3600;
+    const rows = await ctx.db
+      .query("circuitDailyEnergy")
+      .withIndex("by_hub_day", (q) =>
+        q.eq("hubId", args.hubId)
+         .gte("day", watDay(args.fromTimestamp).day)
+         .lte("day", watDay(args.toTimestamp).day)
+      )
+      .take(64 * 400);
 
-    const result = await Promise.all(circuits.map(async (circuit) => {
-      // Take the most recent N readings in the window (desc = newest first)
-      const readings = await ctx.db
-        .query("channelReadings")
-        .withIndex("by_circuit_time", (q) =>
-          q.eq("circuitId", circuit._id)
-           .gte("timestamp", args.fromTimestamp)
-           .lte("timestamp", args.toTimestamp)
-        )
-        .order("desc")
-        .take(maxPerCircuit);
+    const kwhByCircuit = new Map<string, number>();
+    for (const r of rows) kwhByCircuit.set(r.circuitId, (kwhByCircuit.get(r.circuitId) ?? 0) + r.kwh);
 
-      // avgPower × total hours → estimated kWh for the full period
-      const avgPowerW = readings.length > 0
-        ? readings.reduce((s, r) => s + r.powerW, 0) / readings.length
-        : 0;
-      const totalKwh = (avgPowerW * timeRangeHours) / 1000;
-
-      return {
+    return circuits
+      .map((circuit) => ({
         circuitId:    circuit._id,
         channelIndex: circuit.channelIndex,
         name:         circuit.name,
         loadType:     circuit.loadType ?? "general",
-        totalKwh:     Math.round(totalKwh * 1000) / 1000,
-      };
-    }));
-
-    return result.sort((a, b) => b.totalKwh - a.totalKwh);
+        totalKwh:     Math.round((kwhByCircuit.get(circuit._id) ?? 0) * 1000) / 1000,
+      }))
+      .sort((a, b) => b.totalKwh - a.totalKwh);
   },
 });
 
@@ -387,18 +375,7 @@ export const getConsumptionByCircuit = query({
 export const getCircuitStates = query({
   args: { hubId: v.id("hubs") },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
-
-    if (!user) return [];
-
-    const hub = await ctx.db.get(args.hubId);
-    if (!hub || hub.userId !== user._id) return [];
+    if (!(await getHubReadAccess(ctx, args.hubId))) return [];
 
     // Get hubState for the raw channel array (most efficient)
     const state = await ctx.db
@@ -409,18 +386,21 @@ export const getCircuitStates = query({
     const circuits = await ctx.db
       .query("circuits")
       .withIndex("by_hub", (q) => q.eq("hubId", args.hubId))
-      .collect();
+      .take(64);
 
-    // Merge live current into each circuit record
-    return circuits.map((circuit) => ({
-      ...circuit,
-      currentAmps: state?.channelCurrents[circuit.channelIndex] ?? 0,
-      powerW: state
-        ? state.channelCurrents[circuit.channelIndex] * state.voltage * POWER_FACTOR
-        : 0,
-      isOnline: state
-        ? Date.now() - state.lastUpdated < ONLINE_THRESHOLD_MS
-        : false,
-    }));
+    // Merge live current into each circuit record. hasReading is false when the
+    // hub has never reported this channel (shown as "no data", not 0 W).
+    return circuits.map((circuit) => {
+      const amps = state?.channelCurrents[circuit.channelIndex];
+      const hasReading = typeof amps === "number";
+      return {
+        ...circuit,
+        hasReading,
+        currentAmps: hasReading ? amps : 0,
+        powerW:      hasReading && state ? amps * state.voltage * POWER_FACTOR : 0,
+        lastUpdated: state?.lastUpdated ?? null,
+        isOnline:    state ? Date.now() - state.lastUpdated < ONLINE_THRESHOLD_MS : false,
+      };
+    });
   },
 });

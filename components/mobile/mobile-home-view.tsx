@@ -3,8 +3,11 @@
 import { useHubData } from "@/hooks/use-hub-data";
 import { getRoomIcon } from "@/lib/room-utils";
 import { useUser } from "@clerk/nextjs";
-import { Activity, AlertTriangle, Zap } from "lucide-react";
-import { useMemo, useEffect, useRef, useState } from "react";
+import { Activity, AlertTriangle } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { circuitLoad, formatClock } from "@/lib/circuit-status";
+import { useMemo, useEffect, useRef, useState, useId } from "react";
 
 // ── tiny sparkline (SVG, no deps) ──────────────────────────────────────────────
 function Sparkline({
@@ -18,6 +21,7 @@ function Sparkline({
   h?: number;
   color?: string;
 }) {
+  const uid = useId();
   if (data.length < 2) return <svg width={w} height={h} />;
   const min = Math.min(...data);
   const max = Math.max(...data);
@@ -28,7 +32,7 @@ function Sparkline({
     h - pad - ((v - min) / rng) * (h - pad * 2),
   ]);
   const line = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0]},${p[1]}`).join(" ");
-  const id = `sp-${Math.random().toString(36).slice(2, 7)}`;
+  const id = `sp-${uid.replace(/:/g, "")}`;
   return (
     <svg
       width={w}
@@ -129,19 +133,6 @@ function useEased(target: number, ms = 700) {
 }
 
 
-// ── generate sparkline history ─────────────────────────────────────────────────
-function useSparkHistory(value: number, len = 18) {
-  const hist = useRef<number[]>([]);
-  useEffect(() => {
-    hist.current.push(value);
-    if (hist.current.length > len) hist.current.shift();
-  }, [value, len]);
-  return hist.current.length >= 2 ? [...hist.current] : Array(2).fill(value);
-}
-
-const BREAKER_V = 220;
-const BREAKER_PF = 0.85;
-
 // ── main component ─────────────────────────────────────────────────────────────
 export function MobileHomeView() {
   const { user } = useUser();
@@ -149,40 +140,35 @@ export function MobileHomeView() {
     hubState,
     circuitStates,
     hubReadings,
-    relayStateMap,
-    breakerCapacity,
     facilityName,
     isLoading,
-    hasHub,
+    activeHub,
+    isFresh,
+    lastUpdated,
   } = useHubData();
+
+  const openAlerts = useQuery(
+    api.anomalies.getAnomalies,
+    activeHub?._id ? { hubId: activeHub._id, includeResolved: false, limit: 5 } : "skip"
+  ) ?? [];
 
   const totalKw = (hubState?.totalPowerW ?? 0) / 1000;
   const easedTotal = useEased(totalKw);
 
-  // Sparkline from real hub readings (newest-first → reverse for chronological)
-  const readingHistory = useMemo(
+  // Sparkline from real hub readings only (newest-first → reverse for chronological)
+  const sparkData = useMemo(
     () => [...(hubReadings ?? [])].reverse().map((r) => r.totalPowerW / 1000),
     [hubReadings]
   );
-  const fallbackSparkData = useSparkHistory(totalKw);
-  const sparkData = readingHistory.length >= 2 ? readingHistory : fallbackSparkData;
 
-  // Map circuit states to display shape
-  const circuits = useMemo(() => {
-    const maxW = breakerCapacity * BREAKER_V * BREAKER_PF;
-    return circuitStates.map((c) => {
-      const on = relayStateMap[c.channelIndex] ?? true;
-      const pct = maxW > 0 ? Math.min(100, Math.round((c.powerW / maxW) * 100)) : 0;
-      const status = !on ? "OFFLINE" : pct >= 88 ? "HIGH LOAD" : "NOMINAL";
-      return { name: c.name, power: c.powerW, percentage: pct, status, on };
-    });
-  }, [circuitStates, relayStateMap, breakerCapacity]);
-
-  const anomalies = useMemo(() => circuits.filter((c) => c.status === "HIGH LOAD"), [circuits]);
-  const active    = useMemo(() => circuits.filter((c) => c.on), [circuits]);
-
+  const circuits = useMemo(
+    () => circuitStates.map((c) => ({ ...c, ...circuitLoad(c) })),
+    [circuitStates]
+  );
+  const drawing = circuits.filter((c) => c.status === "ACTIVE" || c.status === "HIGH LOAD");
+  const highLoad = circuits.filter((c) => c.status === "HIGH LOAD");
   const top4 = useMemo(
-    () => [...circuits].sort((a, b) => b.power - a.power).slice(0, 4),
+    () => [...circuits].filter((c) => c.hasReading).sort((a, b) => b.powerW - a.powerW).slice(0, 4),
     [circuits]
   );
 
@@ -194,181 +180,95 @@ export function MobileHomeView() {
     );
   }
 
+  const muted = "rgba(160,170,186,1)";
+
   return (
     <div className="space-y-4">
       {/* page header */}
       <div className="flex items-start justify-between">
         <div>
-          <p
-            className="text-[10px] font-semibold tracking-[0.18em] uppercase mb-1"
-            style={{ color: "rgba(136,147,164,1)" }}
-          >
-            {facilityName ?? "Smart Energy OS"}
+          <p className="text-xs font-semibold tracking-[0.14em] uppercase mb-1" style={{ color: muted }}>
+            {facilityName ?? "EnergyPilot"}
           </p>
-          <h1
-            className="text-[28px] font-bold leading-none"
-            style={{ color: "#f2f6fb", letterSpacing: "-0.02em" }}
-          >
-            Hi, {user?.firstName ?? "there"} 👋
+          <h1 className="text-[28px] font-bold leading-none" style={{ color: "#f2f6fb", letterSpacing: "-0.02em" }}>
+            Hi, {user?.firstName ?? "there"}
           </h1>
         </div>
         <span
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold"
-          style={{
-            color: "#18e39a",
-            background: "rgba(24,227,154,0.10)",
-            border: "1px solid rgba(24,227,154,0.25)",
-          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold"
+          style={isFresh
+            ? { color: "#18e39a", background: "rgba(24,227,154,0.10)", border: "1px solid rgba(24,227,154,0.25)" }
+            : { color: "rgba(255,181,71,1)", background: "rgba(255,181,71,0.10)", border: "1px solid rgba(255,181,71,0.25)" }}
         >
-          <span className="live-dot" />
-          live
+          {isFresh && <span className="live-dot" aria-hidden />}
+          {isFresh ? "live" : lastUpdated ? "stale" : "no data"}
         </span>
       </div>
 
       {/* hero load card */}
       <MCard style={{ padding: 20 }}>
-        <p
-          className="text-center text-[10px] font-semibold tracking-[0.16em] uppercase mb-3"
-          style={{ color: "rgba(136,147,164,1)" }}
-        >
-          Total Live Load
+        <p className="text-center text-xs font-semibold tracking-[0.14em] uppercase mb-3" style={{ color: muted }}>
+          Whole system · total load (est.)
         </p>
-        <div className="flex items-baseline justify-center gap-1.5 mb-3">
-          <span
-            className="font-mono glow-text leading-none"
-            style={{ fontSize: 52, fontWeight: 700, color: "#18e39a" }}
-          >
-            {easedTotal.toFixed(2)}
+        <div className="flex items-baseline justify-center gap-1.5 mb-1">
+          <span className="font-mono glow-text leading-none" style={{ fontSize: 52, fontWeight: 700, color: "#18e39a" }}>
+            {hubState ? easedTotal.toFixed(2) : "—"}
           </span>
-          <span
-            className="font-mono"
-            style={{ fontSize: 20, color: "rgba(136,147,164,1)" }}
-          >
-            kW
-          </span>
+          <span className="font-mono" style={{ fontSize: 20, color: muted }}>kW</span>
         </div>
-        <Sparkline data={sparkData} color="#18e39a" h={44} />
+        <p className="text-center text-sm mb-3" style={{ color: muted }}>
+          {lastUpdated ? `Last reading ${formatClock(lastUpdated)}${isFresh ? "" : " — no update for 30 s+"}` : "Waiting for hub data"}
+        </p>
+        {sparkData.length >= 2 && <Sparkline data={sparkData} color="#18e39a" h={44} />}
         <div className="grid grid-cols-3 gap-2 mt-3">
           {[
-            { label: "Circuits", value: `${active.length}/${circuits.length}` },
-            { label: "Anomalies", value: String(anomalies.length) },
-            { label: "Status", value: anomalies.length > 0 ? "Alert" : "Normal" },
+            { label: "Voltage", value: hubState ? `${hubState.voltage.toFixed(0)} V` : "—" },
+            { label: "Drawing", value: `${drawing.length}/${circuits.length}` },
+            { label: "Open alerts", value: String(openAlerts.length) },
           ].map(({ label, value }) => (
             <div key={label} className="flex flex-col items-center gap-0.5">
               <span
                 className="font-mono font-bold"
-                style={{
-                  fontSize: 16,
-                  color: label === "Anomalies" && anomalies.length > 0
-                    ? "#ff6b6b"
-                    : "#18e39a",
-                }}
+                style={{ fontSize: 17, color: label === "Open alerts" && openAlerts.length > 0 ? "#ff6b6b" : "#18e39a" }}
               >
                 {value}
               </span>
-              <span style={{ fontSize: 10, color: "rgba(90,102,120,1)" }}>
-                {label}
-              </span>
+              <span style={{ fontSize: 12, color: muted }}>{label}</span>
             </div>
           ))}
         </div>
       </MCard>
 
-      {/* status row */}
-      <div className="grid grid-cols-2 gap-3">
-        <MCard style={{ padding: 16 }}>
-          <p
-            className="text-[10px] font-semibold tracking-[0.14em] uppercase mb-2"
-            style={{ color: "rgba(136,147,164,1)" }}
-          >
-            Active
-          </p>
-          <p
-            className="font-mono font-bold leading-none glow-text"
-            style={{ fontSize: 26, color: "#18e39a" }}
-          >
-            {active.length}
-            <span style={{ fontSize: 15, color: "rgba(90,102,120,1)" }}>
-              /{circuits.length}
-            </span>
-          </p>
-          <p style={{ fontSize: 11, color: "rgba(136,147,164,1)", marginTop: 4 }}>
-            channels online
-          </p>
-        </MCard>
-        <MCard
-          style={{
-            padding: 16,
-            borderColor:
-              anomalies.length > 0 ? "rgba(255,107,107,0.4)" : undefined,
-          }}
-        >
-          <p
-            className="text-[10px] font-semibold tracking-[0.14em] uppercase mb-2"
-            style={{ color: "rgba(136,147,164,1)" }}
-          >
-            Anomalies
-          </p>
-          <p
-            className="font-mono font-bold leading-none"
-            style={{
-              fontSize: 26,
-              color: anomalies.length > 0 ? "#ff6b6b" : "#18e39a",
-            }}
-          >
-            {anomalies.length}
-          </p>
-          <p style={{ fontSize: 11, color: "rgba(136,147,164,1)", marginTop: 4 }}>
-            {anomalies.length > 0
-              ? anomalies[0].name.split(" ")?.[0] ?? "active"
-              : "all nominal"}
-          </p>
-        </MCard>
-      </div>
-
       {/* top circuits */}
       {top4.length > 0 && (
         <MCard style={{ padding: 18 }}>
-          <div className="flex items-center justify-between mb-4">
-            <span style={{ fontSize: 15, fontWeight: 650, color: "#f2f6fb" }}>
-              Top Circuits
-            </span>
-            <Activity size={15} style={{ color: "#18e39a" }} />
+          <div className="flex items-center justify-between mb-1">
+            <span style={{ fontSize: 16, fontWeight: 650, color: "#f2f6fb" }}>Top circuits now</span>
+            <Activity size={15} style={{ color: "#18e39a" }} aria-hidden />
           </div>
+          <p className="text-sm mb-4" style={{ color: muted }}>Individual circuits · estimated watts · bar = % of configured rating</p>
           <div className="space-y-3.5">
             {top4.map((c) => {
               const Icon = getRoomIcon(c.name);
-              const isAnom = c.status === "ANOMALY";
-              const barColor = isAnom ? "#ff6b6b" : "#18e39a";
+              const barColor = c.status === "HIGH LOAD" ? "#ffb547" : "#18e39a";
               return (
-                <div key={c.name} className="flex items-center gap-3">
-                  <div
-                    className="flex-none grid place-items-center rounded-[9px]"
-                    style={{
-                      width: 32,
-                      height: 32,
-                      background: barColor + "1f",
-                      color: barColor,
-                    }}
-                  >
+                <div key={c._id} className="flex items-center gap-3">
+                  <div className="flex-none grid place-items-center rounded-[9px]"
+                    style={{ width: 32, height: 32, background: barColor + "1f", color: barColor }} aria-hidden>
                     <Icon size={14} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1.5">
-                      <span
-                        className="text-[13px] font-medium truncate"
-                        style={{ color: "#f2f6fb" }}
-                      >
-                        {c.name}
+                      <span className="text-sm font-medium truncate" style={{ color: "#f2f6fb" }}>
+                        CH{c.channelIndex + 1} · {c.name}
                       </span>
-                      <span
-                        className="font-mono text-[12px] ml-2 flex-none"
-                        style={{ color: "rgba(196,204,216,1)" }}
-                      >
-                        {c.power.toLocaleString()}W
+                      <span className="font-mono text-sm ml-2 flex-none" style={{ color: "rgba(196,204,216,1)" }}>
+                        {Math.round(c.powerW).toLocaleString()} W
                       </span>
                     </div>
-                    <LoadBar pct={c.percentage} color={barColor} />
+                    {c.pct !== null
+                      ? <LoadBar pct={c.pct} color={barColor} />
+                      : <p className="text-xs" style={{ color: muted }}>No rating configured · {c.currentAmps.toFixed(1)} A</p>}
                   </div>
                 </div>
               );
@@ -377,40 +277,24 @@ export function MobileHomeView() {
         </MCard>
       )}
 
-      {/* anomaly banner (if any) */}
-      {anomalies.length > 0 && (
-        <MCard
-          style={{
-            padding: 14,
-            borderColor: "rgba(255,107,107,0.4)",
-            background: "rgba(255,107,107,0.06)",
-          }}
-        >
+      {/* alert banner (real recorded alerts, plus circuits at high load) */}
+      {(openAlerts.length > 0 || highLoad.length > 0) && (
+        <MCard style={{ padding: 14, borderColor: "rgba(255,107,107,0.4)", background: "rgba(255,107,107,0.06)" }}>
           <div className="flex items-center gap-3">
-            <div
-              className="flex-none grid place-items-center rounded-[13px]"
-              style={{
-                width: 44,
-                height: 44,
-                background: "rgba(255,107,107,0.16)",
-                color: "#ff6b6b",
-              }}
-            >
+            <div className="flex-none grid place-items-center rounded-[13px]"
+              style={{ width: 44, height: 44, background: "rgba(255,107,107,0.16)", color: "#ff6b6b" }} aria-hidden>
               <AlertTriangle size={22} />
             </div>
             <div className="flex-1">
-              <p
-                className="font-semibold"
-                style={{ fontSize: 15, color: "#f2f6fb" }}
-              >
-                {anomalies.length} active anomal
-                {anomalies.length === 1 ? "y" : "ies"}
+              <p className="font-semibold" style={{ fontSize: 15, color: "#f2f6fb" }}>
+                {openAlerts.length > 0
+                  ? `${openAlerts.length} open alert${openAlerts.length === 1 ? "" : "s"}`
+                  : `${highLoad.length} circuit${highLoad.length === 1 ? "" : "s"} at high load`}
               </p>
-              <p style={{ fontSize: 12.5, color: "rgba(136,147,164,1)", marginTop: 2 }}>
-                Go to Alerts tab to isolate the affected breaker
+              <p style={{ fontSize: 13, color: muted, marginTop: 2 }}>
+                {openAlerts[0]?.message ?? `CH${highLoad[0].channelIndex + 1} · ${highLoad[0].name}`}
               </p>
             </div>
-            <Zap size={14} style={{ color: "#ff6b6b", flexShrink: 0 }} />
           </div>
         </MCard>
       )}

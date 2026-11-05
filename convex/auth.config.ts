@@ -4,7 +4,7 @@
 //   Clerk Dashboard → JWT Templates → New template → Convex
 // The issuer domain must match your Clerk instance domain exactly.
 
-export default {
+const authConfig = {
   providers: [
     {
       domain: process.env.CLERK_JWT_ISSUER_DOMAIN,
@@ -12,3 +12,5 @@ export default {
     },
   ],
 };
+
+export default authConfig;

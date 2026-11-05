@@ -51,14 +51,14 @@ export function AnomalyFeed() {
     <div className="glass-card p-5">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <p className="text-[10px] font-semibold tracking-[0.15em] uppercase mb-1" style={{ color: "rgba(148,163,184,0.6)" }}>
-            Anomaly detector · live
+          <p className="text-xs font-semibold tracking-[0.15em] uppercase mb-1" style={{ color: "rgba(148,163,184,0.6)" }}>
+            Recorded alerts · latest 5
           </p>
-          <h2 className="text-[17px] font-semibold text-white">Live Events</h2>
+          <h2 className="text-xl lg:text-2xl font-semibold text-white">Recent Alerts</h2>
         </div>
         <Link
           href="/dashboard/alerts"
-          className="text-[12px] font-medium"
+          className="text-sm font-medium"
           style={{ color: "#18e39a" }}
         >
           All alerts →
@@ -66,8 +66,8 @@ export function AnomalyFeed() {
       </div>
 
       {items.length === 0 ? (
-        <p className="text-[13px] text-center py-6" style={{ color: "rgba(100,116,139,0.7)" }}>
-          {hubId ? "No anomalies detected — all nominal" : "Connect a hub to see events"}
+        <p className="text-base text-center py-6" style={{ color: "rgba(100,116,139,0.7)" }}>
+          {hubId ? "No alerts recorded yet" : "Connect a hub to see alerts"}
         </p>
       ) : (
         <div className="space-y-2">
@@ -75,7 +75,6 @@ export function AnomalyFeed() {
             const tone = a.resolvedAt ? "ok" : a.severity === "critical" ? "bad" : "warn";
             const t    = TONE[tone];
             const Icon = TYPE_ICON[a.type] ?? AlertTriangle;
-            const score = a.severity !== "warning" ? (a.value / Math.max(a.threshold, 0.001)).toFixed(2) : undefined;
 
             return (
               <div
@@ -95,24 +94,22 @@ export function AnomalyFeed() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2 mb-0.5">
-                    <span className="text-[13px] font-semibold text-white truncate">
+                    <span className="text-base font-semibold text-white truncate">
                       {TYPE_LABEL[a.type] ?? a.type}
                     </span>
-                    <span className="font-mono text-[10.5px] flex-none" style={{ color: "rgba(88,105,128,0.9)" }}>
+                    <span className="font-mono text-xs flex-none" style={{ color: "rgba(88,105,128,0.9)" }}>
                       {relTime(a.timestamp)}
                     </span>
                   </div>
-                  <p className="text-[11.5px] leading-relaxed truncate" style={{ color: "rgba(100,116,139,0.85)" }}>
+                  <p className="text-sm leading-relaxed truncate" style={{ color: "rgba(100,116,139,0.85)" }}>
                     {a.message}
                   </p>
-                  {score && (
-                    <span
-                      className="inline-flex items-center mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                      style={{ color: t.color, background: t.bg, border: `1px solid ${t.color}33` }}
-                    >
-                      {a.resolvedAt ? "resolved" : `score ${score}`}
-                    </span>
-                  )}
+                  <span
+                    className="inline-flex items-center mt-1.5 px-2 py-0.5 rounded-full text-xs font-semibold"
+                    style={{ color: t.color, background: t.bg, border: `1px solid ${t.color}33` }}
+                  >
+                    {a.resolvedAt ? "closed" : a.severity === "critical" ? "open · critical" : "open · warning"}
+                  </span>
                 </div>
               </div>
             );

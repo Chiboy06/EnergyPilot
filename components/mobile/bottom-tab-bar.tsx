@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { href: "/dashboard",             icon: LayoutDashboard, label: "Overview"    },
   { href: "/dashboard/circuits",    icon: Activity,        label: "Circuits"    },
-  { href: "/dashboard/predictions", icon: TrendingUp,      label: "Predictions" },
+  { href: "/dashboard/predictions", icon: TrendingUp,      label: "Estimate"    },
   { href: "/dashboard/analytics",   icon: BarChart3,       label: "Analytics"   },
   { href: "/dashboard/ai",          icon: MessageSquare,   label: "AI"          },
   { href: "/dashboard/settings",    icon: Settings,        label: "Settings"    },

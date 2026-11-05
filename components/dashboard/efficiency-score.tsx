@@ -1,4 +1,5 @@
 'use client'
+import { useRange } from '@/hooks/use-range'
 
 import { useMemo } from 'react'
 import { Card } from '@/components/ui/card'
@@ -23,14 +24,13 @@ function gradeColor(g: string) {
   return 'text-red-400'
 }
 
+// Day-to-day consistency of total energy use over the last 30 days.
+// This is NOT an efficiency rating and has no comparison with other homes.
 export function EfficiencyScore() {
   const { activeHub } = useHubData()
   const hubId = activeHub?._id
 
-  const { from, to } = useMemo(() => {
-    const to = Math.floor(Date.now() / 1000)
-    return { from: to - 30 * 86400, to }
-  }, [])
+  const { from, to } = useRange(30)
 
   const days = useQuery(
     api.telemetry.getConsumptionByDay,
@@ -56,14 +56,17 @@ export function EfficiencyScore() {
     const threshold = avg * 1.2
     const goodDays = kwhs.filter(k => k <= threshold).length
     const opt = Math.round((goodDays / kwhs.length) * 100)
-    return { grade: g, score: s, optimizerPct: opt, subLabel: `${days.length}-day consistency index` }
+    return { grade: g, score: s, optimizerPct: opt, subLabel: `Based on ${days.length} day(s) of data in the last 30 days` }
   }, [days])
 
   const isLoading = days === undefined && !!hubId
 
   return (
     <Card className="p-6">
-      <h3 className="text-lg font-semibold text-foreground mb-8">Efficiency Score</h3>
+      <h3 className="text-xl lg:text-2xl font-semibold text-foreground">Usage Consistency</h3>
+      <p className="text-sm text-muted-foreground mt-1 mb-6">
+        How steady your daily energy use is (100 = every day the same). Always the last 30 days; not an efficiency rating.
+      </p>
 
       {isLoading ? (
         <div className="flex items-center justify-center h-32">
@@ -74,7 +77,7 @@ export function EfficiencyScore() {
           <div className="text-center">
             <div className={`text-5xl font-bold mb-2 ${gradeColor(grade)}`}>{grade}</div>
             <p className="text-sm text-muted-foreground">
-              {score !== null ? `Score: ${score}/100` : 'Vs Neighbors'}
+              {score !== null ? `Consistency: ${score}/100` : 'Not enough data'}
             </p>
             <p className="text-xs text-muted-foreground mt-1">{subLabel}</p>
           </div>
@@ -83,9 +86,9 @@ export function EfficiencyScore() {
             <div className={`text-2xl font-bold mb-2 ${optimizerPct !== null ? 'text-primary' : 'text-muted-foreground'}`}>
               {optimizerPct !== null ? `${optimizerPct}%` : '—'}
             </div>
-            <p className="text-sm text-muted-foreground">Optimizer</p>
+            <p className="text-sm text-muted-foreground">Typical days</p>
             <p className="text-xs text-muted-foreground mt-1">
-              {optimizerPct !== null ? 'Days within normal usage band' : 'Awaiting telemetry'}
+              {optimizerPct !== null ? 'Days using no more than 1.2× your daily average' : 'Awaiting telemetry'}
             </p>
           </div>
         </div>

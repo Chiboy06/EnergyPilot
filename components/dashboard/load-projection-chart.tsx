@@ -1,8 +1,8 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Card } from '@/components/ui/card'
-import { AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { useQuery } from 'convex/react'
 import { api } from '@/convex/_generated/api'
 import { useHubData } from '@/hooks/use-hub-data'
@@ -16,9 +16,9 @@ export function LoadProjectionChart() {
     hubId ? { hubId } : 'skip'
   )
 
+  const [nowMs] = useState(() => Date.now())
   const chartData = useMemo(() => {
     if (!forecast?.dataPoints?.length) return []
-    const nowMs = Date.now()
     return forecast.dataPoints.map((pt) => {
       const tsMs    = pt.timestamp * 1000
       const isPast  = tsMs < nowMs
@@ -26,12 +26,11 @@ export function LoadProjectionChart() {
       return {
         label,
         predicted:   pt.predictedKwh,
-        upper:       pt.confidenceHigh,
-        lower:       pt.confidenceLow,
+        band:        [pt.confidenceLow, pt.confidenceHigh] as [number, number],
         isNow:       !isPast && tsMs - nowMs < 3_600_000,
       }
     })
-  }, [forecast])
+  }, [forecast, nowMs])
 
   const nowIdx = chartData.findIndex((d) => d.isNow)
   const nowLabel = chartData[nowIdx]?.label ?? ''
@@ -41,22 +40,21 @@ export function LoadProjectionChart() {
   return (
     <Card className="bg-card border-border p-4 md:p-6 rounded-lg">
       <div className="mb-4 md:mb-6">
-        <h3 className="text-base md:text-lg font-semibold text-foreground mb-1">24-Hour Load Projection</h3>
-        <p className="text-xs md:text-sm text-muted-foreground">
-          {forecast
-            ? `Moving-average forecast · generated ${new Date(forecast.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-            : 'Forecast from moving-average model'}
+        <h3 className="text-xl lg:text-2xl font-semibold text-foreground mb-1">Hourly Energy Estimate · Next 24 h</h3>
+        <p className="text-sm lg:text-base text-muted-foreground">
+          kWh expected in each hour (= that hour&apos;s 7-day average power). Estimate only
+          {forecast ? ` · generated ${new Date(forecast.generatedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 md:gap-6 mb-4 md:mb-6">
         <div className="flex items-center gap-2">
           <div className="w-3 h-0.5 bg-primary flex-shrink-0" style={{ width: 12 }} />
-          <span className="text-xs text-muted-foreground">Forecast</span>
+          <span className="text-sm text-muted-foreground">Estimate (kWh per hour)</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-3 h-0.5 flex-shrink-0" style={{ width: 12, background: 'rgba(59,130,246,0.4)' }} />
-          <span className="text-xs text-muted-foreground">Confidence band</span>
+          <span className="text-sm text-muted-foreground">Typical spread (±1 std. dev. of past readings), not a guarantee</span>
         </div>
       </div>
 
@@ -66,7 +64,7 @@ export function LoadProjectionChart() {
         </div>
       ) : chartData.length === 0 ? (
         <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
-          No forecast available yet — runs daily at 01:00 WAT once telemetry is collected.
+          No estimate yet — generated daily at 01:00 WAT once the hub has sent data.
         </div>
       ) : (
         <>
@@ -81,26 +79,29 @@ export function LoadProjectionChart() {
               <CartesianGrid strokeDasharray="3 3" stroke="#30363d" vertical={false} />
               <XAxis
                 dataKey="label"
-                tick={{ fill: '#8b949e', fontSize: 11 }}
+                tick={{ fill: '#8b949e', fontSize: 13 }}
                 axisLine={{ stroke: '#30363d' }}
                 tickLine={false}
                 interval={3}
               />
               <YAxis
-                tick={{ fill: '#8b949e', fontSize: 11 }}
+                tick={{ fill: '#8b949e', fontSize: 13 }}
                 axisLine={{ stroke: '#30363d' }}
                 tickLine={false}
                 tickFormatter={(v) => `${v.toFixed(1)}`}
+                label={{ value: 'kWh per hour', angle: -90, position: 'insideLeft', fill: '#8b949e', fontSize: 13 }}
               />
               <Tooltip
                 contentStyle={{ backgroundColor: '#161b22', border: '1px solid #30363d', borderRadius: '0.5rem', color: '#e6edf3' }}
-                formatter={(value) => typeof value === 'number' ? `${value.toFixed(2)} kWh` : null}
+                formatter={(value, name) => name === 'band' && Array.isArray(value)
+                  ? [`${Number(value[0]).toFixed(2)}–${Number(value[1]).toFixed(2)} kWh`, 'Typical spread']
+                  : [`${Number(value).toFixed(2)} kWh`, 'Estimate']}
               />
               {/* Confidence band */}
-              <Area type="monotone" dataKey="upper" fill="url(#confBand)" stroke="none" isAnimationActive={false} />
+              <Area type="linear" dataKey="band" fill="url(#confBand)" stroke="none" isAnimationActive={false} />
               {/* Forecast line */}
               <Area
-                type="monotone"
+                type="linear"
                 dataKey="predicted"
                 stroke="#10b981"
                 strokeWidth={2}

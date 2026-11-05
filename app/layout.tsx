@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
-import ReduxProvider from "@/components/ReduxProvider";
 import { ClerkProvider } from "@clerk/nextjs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -38,7 +37,6 @@ export default function RootLayout({
       >
         <ClerkProvider>
           <ConvexClientProvider>
-            <ReduxProvider>
               <ThemeProvider
                 attribute="class"
                 defaultTheme="dark"
@@ -50,7 +48,6 @@ export default function RootLayout({
                   {children}
                 </TooltipProvider>
               </ThemeProvider>
-            </ReduxProvider>
           </ConvexClientProvider>
         </ClerkProvider>
       </body>

@@ -1,29 +1,11 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowRight, Play, Zap, Activity, Building2, House, Server } from "lucide-react"
+import { ArrowRight, Play, Zap, Activity } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Fragment } from "react/jsx-runtime"
 
 export function HeroSection() {
-  const icons = [
-    {
-      id: 1,
-      icon: Building2
-    },
-    // {
-    //   icon: Building2
-    // },
-    {
-      id: 2,
-      icon: House
-    },
-    {
-      id: 3,
-      icon: Server
-    }
-  ]
   return (
     <section className="relative overflow-hidden py-20 lg:py-32">
       <div className="container mx-auto px-4">
@@ -35,33 +17,23 @@ export function HeroSection() {
               <span className="text-primary">Smarter Spaces</span>
             </h1>
             <p className="text-base sm:text-lg text-muted-foreground max-w-lg leading-relaxed">
-              Real-time insights, ML-powered predictions, and intelligent control for residential and commercial IoT systems. Track 10+ circuits from anywhere.
+              Live per-circuit monitoring, a daily 24-hour usage estimate, in-app voltage and load alerts, and remote relay control for homes and buildings — from the web or your phone.
             </p>
             <div className="flex flex-wrap gap-4">
-              <Link href="/register">
+              <Link href="/sign-up">
                 <Button size="lg" className="bg-primary text-foreground hover:bg-primary/90">
-                  Start Free Trial
+                  Get started
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
-              <Button size="lg" variant="outline" className="border-border text-foreground hover:bg-secondary">
-                <Play className="mr-2 h-4 w-4" />
-                View Live Demo
-              </Button>
+              <Link href="#how-it-works">
+                <Button size="lg" variant="outline" className="border-border text-foreground hover:bg-secondary">
+                  <Play className="mr-2 h-4 w-4" />
+                  See how it works
+                </Button>
+              </Link>
             </div>
-            <div className="pt-4">
-              <p className="text-xs text-muted-foreground mb-3">TRUSTED BY 10,000+ INSTALLATIONS</p>
-              <div className="flex gap-6 items-center opacity-50">
-                {icons.map((i) => (
-                  <Fragment key={i.id}>
-                    <div className="h-6 w-6 bg-muted-foreground/20 rounded">
-                      <i.icon className="h-6 w-6" />
-                    </div>
-                  </Fragment>
-                  
-                ))}
-              </div>
-            </div>
+            {/* CONTENT NEEDED (team): real installation count / customer logos, once verified. */}
           </div>
 
           {/* Right Content - Dashboard Preview */}
@@ -70,11 +42,8 @@ export function HeroSection() {
               <div className="space-y-4">
                 {/* Dashboard Header */}
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Dashboard</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-primary">Live</span>
-                    <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-                  </div>
+                  <span className="text-sm text-muted-foreground">Dashboard preview</span>
+                  <span className="text-xs text-muted-foreground">Example data</span>
                 </div>
 
                 {/* Stats Row */}

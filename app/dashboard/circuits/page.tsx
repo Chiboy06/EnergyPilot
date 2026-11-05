@@ -3,49 +3,42 @@
 export const dynamic = "force-dynamic";
 
 import { CircuitGrid } from "@/components/dashboard/circuit-grid"
-import { useFacility } from '@/hooks/use-facility'
 import { useHubData } from '@/hooks/use-hub-data'
+import { circuitLoad } from '@/lib/circuit-status'
 import { useState } from 'react'
-
-const VOLTAGE = 220;
-const POWER_FACTOR = 0.85;
 
 export default function CircuitsPage() {
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'issues'>('all')
-  const { facilityName, facilityType } = useFacility()
-  const { circuitStates, breakerCapacity } = useHubData()
+  const { circuitStates, facilityName, activeHub } = useHubData()
 
-  const issueCount = circuitStates.filter((c) => {
-    const maxW = (c.maxAmps ?? breakerCapacity) * VOLTAGE * POWER_FACTOR
-    return maxW > 0 && (c.powerW / maxW) * 100 >= 85
-  }).length
+  const issueCount = circuitStates.filter((c) => circuitLoad(c).status === 'HIGH LOAD').length
 
   return (
     <div className="space-y-5">
-      {/* Page title */}
       <div>
-        <p className="text-[10px] font-semibold tracking-[0.16em] uppercase mb-1.5" style={{ color: "rgba(148,163,184,0.55)" }}>
-          {facilityName ?? "Facility"} · Breaker array · CH1–16
+        <p className="text-xs font-semibold tracking-[0.12em] uppercase mb-1.5" style={{ color: "rgba(148,163,184,0.8)" }}>
+          {facilityName ?? "Facility"} · {activeHub ? `${activeHub.channelCount}-channel hub` : "no hub"}
         </p>
-        <h1 className="text-2xl font-bold text-white tracking-tight">Circuits</h1>
-        <p className="text-[13px] mt-0.5" style={{ color: "rgba(100,116,139,0.9)" }}>
-          16-channel power monitoring · relay control
+        <h1 className="text-3xl lg:text-4xl font-bold text-white tracking-tight">Circuits</h1>
+        <p className="text-base lg:text-lg mt-1" style={{ color: "rgba(148,163,184,0.85)" }}>
+          {circuitStates.length} circuits configured · per-circuit current, estimated power and relay control
         </p>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex gap-2">
+      <div className="flex gap-2" role="tablist" aria-label="Filter circuits">
         {(['all', 'active', 'issues'] as const).map((f) => (
           <button
             key={f}
+            role="tab"
+            aria-selected={activeFilter === f}
             onClick={() => setActiveFilter(f)}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+            className={`px-3.5 py-1.5 rounded-full text-sm font-semibold transition-colors ${
               activeFilter === f
                 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                : 'bg-transparent text-slate-500 border border-transparent hover:text-slate-300'
+                : 'bg-transparent text-slate-400 border border-transparent hover:text-slate-200'
             }`}
           >
-            {f === 'issues' ? `Issues (${issueCount})` : f.charAt(0).toUpperCase() + f.slice(1)}
+            {f === 'issues' ? `High load (${issueCount})` : f === 'active' ? 'Drawing current' : 'All'}
           </button>
         ))}
       </div>

@@ -6,7 +6,7 @@ import { PowerChart } from "@/components/dashboard/power-chart";
 import { CircuitMonitor } from "@/components/dashboard/circuit-monitor";
 import { AnomalyFeed } from "@/components/dashboard/anomaly-feed";
 import { MobileHomeView } from "@/components/mobile/mobile-home-view";
-import { useFacility } from "@/hooks/use-facility";
+import { useHubData } from "@/hooks/use-hub-data";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const FACILITY_TYPE_LABELS: Record<string, string> = {
@@ -18,7 +18,7 @@ const FACILITY_TYPE_LABELS: Record<string, string> = {
 
 export default function DashboardPage() {
   const { user, isLoaded } = useUser();
-  const { facilityName, facilityType, rooms } = useFacility();
+  const { facilityName, facilityType, circuitStates, activeHub, isFresh, lastUpdated, userRole } = useHubData();
   const isMobile = useIsMobile();
 
   if (!isLoaded) {
@@ -66,30 +66,30 @@ export default function DashboardPage() {
     <div className="space-y-6 eg-anim-fade-in">
       {/* Page header */}
       <div>
-        <p className="text-[10px] font-semibold tracking-[0.16em] uppercase mb-1.5" style={{ color: "rgba(148,163,184,0.55)" }}>
+        <p className="text-xs font-semibold tracking-[0.12em] uppercase mb-1.5" style={{ color: "rgba(148,163,184,0.8)" }}>
           {facilityName
-            ? `${facilityName} · ${FACILITY_TYPE_LABELS[facilityType ?? ""] ?? facilityType}`
-            : "Energenius · Smart Energy OS"}
+            ? `${facilityName} · ${FACILITY_TYPE_LABELS[facilityType ?? ""] ?? facilityType}${userRole !== "owner" ? ` · shared with you (${userRole})` : ""}`
+            : "EnergyPilot"}
         </p>
         <div className="flex items-end justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">
+            <h1 className="text-3xl lg:text-4xl font-bold text-white tracking-tight">
               Welcome back, {user?.firstName || "Operator"}
             </h1>
-            <p className="text-[13.5px] mt-0.5" style={{ color: "rgba(100,116,139,0.9)" }}>
-              {rooms.length} circuits monitored · real-time telemetry active
+            <p className="text-base lg:text-lg mt-1" style={{ color: "rgba(148,163,184,0.85)" }}>
+              {activeHub
+                ? `${activeHub.name} · ${circuitStates.length} circuits configured on a ${activeHub.channelCount}-channel hub`
+                : "No hub connected"}
             </p>
           </div>
           <span
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold"
-            style={{
-              color: "#18e39a",
-              background: "rgba(24,227,154,0.10)",
-              border: "1px solid rgba(24,227,154,0.25)",
-            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold"
+            style={isFresh
+              ? { color: "#18e39a", background: "rgba(24,227,154,0.10)", border: "1px solid rgba(24,227,154,0.25)" }
+              : { color: "rgba(255,181,71,1)", background: "rgba(255,181,71,0.10)", border: "1px solid rgba(255,181,71,0.25)" }}
           >
-            <span className="live-dot" />
-            live
+            {isFresh && <span className="live-dot" />}
+            {isFresh ? "live" : lastUpdated ? "stale" : "no data"}
           </span>
         </div>
       </div>

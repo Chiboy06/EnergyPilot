@@ -9,8 +9,6 @@
 
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { internal } from "./_generated/api";
-import { ConvexError } from "convex/values";
 
 // ── Internal: create or update a user record ──────────────────────────────
 // Called by the Clerk webhook HTTP action on user.created and user.updated.
@@ -127,6 +125,7 @@ export const getOnboardingStatus = query({
 // Safe to call on every app load — patches lastSignIn if user already exists.
 export const storeUser = mutation({
   args: {
+    // shortcut: accepted+ignored for old native builds, delete after next EAS release
     clerkId:   v.optional(v.string()),
     email:     v.optional(v.string()),
     firstName: v.optional(v.string()),
@@ -135,13 +134,14 @@ export const storeUser = mutation({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    const clerkId = identity?.subject ?? args.clerkId;
-    if (!clerkId) return null;
+    if (!identity) return null;
+    const clerkId = identity.subject;
 
-    const email     = identity?.email      ?? args.email     ?? "";
-    const firstName = identity?.givenName  ?? args.firstName;
-    const lastName  = identity?.familyName ?? args.lastName;
-    const imageUrl  = identity?.pictureUrl ?? args.imageUrl;
+    // Profile fields describe the caller's own record only; Clerk is the source of truth.
+    const email     = identity.email      ?? args.email     ?? "";
+    const firstName = identity.givenName  ?? args.firstName;
+    const lastName  = identity.familyName ?? args.lastName;
+    const imageUrl  = identity.pictureUrl ?? args.imageUrl;
 
     const existing = await ctx.db
       .query("users")
@@ -165,42 +165,5 @@ export const storeUser = mutation({
       createdAt:              Date.now(),
       lastSignIn:             Date.now(),
     });
-  },
-});
-
-// ── Public: update user display name ────────────────────────────────────
-export const updateName = mutation({
-  args: {
-    firstName: v.string(),
-    lastName:  v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Not authenticated");
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
-    if (!user) throw new ConvexError("User not found");
-    await ctx.db.patch(user._id, {
-      firstName: args.firstName,
-      lastName:  args.lastName,
-    });
-  },
-});
-
-// ── Public: get user by Clerk ID ──────────────────────────────────────────
-// Verifies the requested clerkId matches the authenticated session before
-// returning data — prevents cross-user access.
-export const getCurrentUserByClerkId = query({
-  args: { clerkId: v.string() },
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity || identity.subject !== args.clerkId) return null;
-
-    return await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
-      .unique();
   },
 });

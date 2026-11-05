@@ -1,9 +1,8 @@
 'use client'
 
 import { useQuery, useMutation } from 'convex/react'
-import { useUser } from '@clerk/nextjs'
 import { api } from '@/convex/_generated/api'
-import { Trash2, Plus, Wifi, WifiOff, CheckCircle2, ChevronDown, Loader2 } from 'lucide-react'
+import { Plus, Wifi, WifiOff, CheckCircle2, ChevronDown, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -11,26 +10,16 @@ import { cn } from '@/lib/utils'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-// Static demo rows shown when no real hubs exist yet
-const DEMO_DEVICES = [
-  { id: 1, name: 'Main Gateway', type: 'IoT Gateway', model: 'EP-GW-001', status: 'Online', lastSeen: 'Now' },
-  { id: 2, name: 'Kitchen Circuit Monitor', type: 'Current Sensor', model: 'EP-CM-005', status: 'Online', lastSeen: '2m ago' },
-  { id: 3, name: 'HVAC Controller', type: 'Smart Relay', model: 'EP-SR-003', status: 'Online', lastSeen: '1h ago' },
-]
+const STALE_MS = 30_000
+const ROLE_LABEL = { owner: 'Owner', controller: 'Shared · controller', viewer: 'Shared · viewer' } as const
 
 export function DeviceManagement() {
   const router = useRouter()
   const [dropdownOpen, setDropdownOpen] = useState(false)
 
-  const { user } = useUser()
-  const currentUser = useQuery(
-    api.users.getCurrentUserByClerkId,
-    user?.id ? { clerkId: user.id } : "skip"
-  )
-  const hubs = useQuery(
-    api.onboarding.listHubs,
-    user?.id ? { clerkId: user.id } : "skip"
-  )
+  const [error, setError] = useState<string | null>(null)
+  const currentUser = useQuery(api.users.getMe, {})
+  const hubs = useQuery(api.onboarding.listHubs, {})
   const setActiveFacility = useMutation(api.onboarding.setActiveFacility)
 
   const isLoading = currentUser === undefined || hubs === undefined
@@ -42,15 +31,15 @@ export function DeviceManagement() {
     <div className="space-y-8">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Device Management</h2>
-          <p className="text-sm text-muted-foreground">Manage connected IoT devices and sensors.</p>
+          <h2 className="text-xl lg:text-2xl font-bold text-foreground">Devices</h2>
+          <p className="text-base text-muted-foreground">Hubs you own or that were shared with you. Removing a hub isn&apos;t available in the app yet.</p>
         </div>
         <Button
           onClick={() => router.push('/onboarding?addDevice=true')}
           className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Device
+          <Plus className="h-4 w-4 mr-2" aria-hidden />
+          Add hub
         </Button>
       </div>
 
@@ -61,7 +50,7 @@ export function DeviceManagement() {
             onClick={() => setDropdownOpen((o) => !o)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white hover:border-slate-600 transition-colors"
           >
-            <span className="text-slate-400">Active facility:</span>
+            <span className="text-slate-400">Showing:</span>
             <span className="font-medium">{activeHub?.name ?? '—'}</span>
             <ChevronDown className={cn('h-4 w-4 text-slate-400 transition-transform', dropdownOpen && 'rotate-180')} />
           </button>
@@ -72,7 +61,9 @@ export function DeviceManagement() {
                 <button
                   key={hub._id}
                   onClick={async () => {
-                    await setActiveFacility({ facilityId: hub.facilityId })
+                    setError(null)
+                    try { await setActiveFacility({ facilityId: hub.facilityId }) }
+                    catch (e) { setError(e instanceof Error ? e.message : 'Could not switch hub') }
                     setDropdownOpen(false)
                   }}
                   className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-slate-700 transition-colors text-left"
@@ -91,6 +82,8 @@ export function DeviceManagement() {
         </div>
       )}
 
+      {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+
       <Card className="p-6">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -102,7 +95,7 @@ export function DeviceManagement() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  {['NAME', 'MAC ADDRESS', 'CHANNELS', 'STATUS', 'ADDED'].map((h) => (
+                  {['NAME', 'ACCESS', 'MAC ADDRESS', 'CHANNELS', 'LAST DATA', 'ADDED'].map((h) => (
                     <th key={h} className="text-left text-xs font-semibold text-muted-foreground py-3 px-4">{h}</th>
                   ))}
                 </tr>
@@ -111,13 +104,21 @@ export function DeviceManagement() {
                 {hubs.map((hub) => (
                   <tr key={hub._id} className="border-b border-border hover:bg-secondary/30 transition-colors">
                     <td className="py-3 px-4 font-medium text-foreground">{hub.name}</td>
+                    <td className="py-3 px-4 text-muted-foreground">{ROLE_LABEL[hub.role]}</td>
                     <td className="py-3 px-4 text-muted-foreground font-mono text-xs">{hub.macAddress}</td>
                     <td className="py-3 px-4 text-muted-foreground">{hub.channelCount} ch</td>
                     <td className="py-3 px-4">
-                      <Badge className={cn(hub.status === 'online' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-500/20 text-slate-400')}>
-                        {hub.status === 'online' ? <Wifi className="h-3 w-3 mr-1 inline" /> : <WifiOff className="h-3 w-3 mr-1 inline" />}
-                        <span className="capitalize">{hub.status}</span>
-                      </Badge>
+                      {(() => {
+                        const fresh = !!hub.lastSeenAt && Date.now() - hub.lastSeenAt < STALE_MS
+                        return (
+                          <Badge className={cn(fresh ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-500/20 text-slate-300')}>
+                            {fresh ? <Wifi className="h-3 w-3 mr-1 inline" aria-hidden /> : <WifiOff className="h-3 w-3 mr-1 inline" aria-hidden />}
+                            {hub.lastSeenAt
+                              ? fresh ? 'Reporting now' : `Last ${new Date(hub.lastSeenAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+                              : 'No data received yet'}
+                          </Badge>
+                        )
+                      })()}
                     </td>
                     <td className="py-3 px-4 text-muted-foreground">
                       {new Date(hub.createdAt).toLocaleDateString()}
@@ -128,38 +129,8 @@ export function DeviceManagement() {
             </table>
           </div>
         ) : (
-          /* Static demo data — shown before any real device is added */
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left text-xs font-semibold text-muted-foreground py-3 px-4">NAME</th>
-                  <th className="text-left text-xs font-semibold text-muted-foreground py-3 px-4">TYPE</th>
-                  <th className="text-left text-xs font-semibold text-muted-foreground py-3 px-4">MODEL</th>
-                  <th className="text-left text-xs font-semibold text-muted-foreground py-3 px-4">STATUS</th>
-                  <th className="text-left text-xs font-semibold text-muted-foreground py-3 px-4">LAST SEEN</th>
-                  <th className="text-left text-xs font-semibold text-muted-foreground py-3 px-4">ACTION</th>
-                </tr>
-              </thead>
-              <tbody>
-                {DEMO_DEVICES.map((device) => (
-                  <tr key={device.id} className="border-b border-border hover:bg-secondary/30 transition-colors">
-                    <td className="py-3 px-4 text-foreground font-medium">{device.name}</td>
-                    <td className="py-3 px-4 text-muted-foreground">{device.type}</td>
-                    <td className="py-3 px-4 text-muted-foreground">{device.model}</td>
-                    <td className="py-3 px-4">
-                      <Badge className="bg-primary/20 text-primary">{device.status}</Badge>
-                    </td>
-                    <td className="py-3 px-4 text-muted-foreground">{device.lastSeen}</td>
-                    <td className="py-3 px-4">
-                      <button className="text-destructive hover:bg-destructive/10 p-2 rounded transition-colors">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="text-center py-12 text-base text-muted-foreground">
+            No hubs yet. Use <strong>Add hub</strong> to register one, or join a shared hub with an access code during onboarding.
           </div>
         )}
       </Card>

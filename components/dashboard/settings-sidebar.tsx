@@ -1,7 +1,6 @@
 'use client'
 
 import { User, Bell, AlertCircle, Wifi, Code, ChevronRight, Share2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 interface SettingsSidebarProps {
   activeTab: string
@@ -12,17 +11,17 @@ const settingsGroups = [
   {
     label: 'General',
     items: [
-      { id: 'account', label: 'Account', icon: User, description: 'Profile & preferences' },
-      { id: 'notifications', label: 'Notifications', icon: Bell, description: 'Alerts & reports' },
+      { id: 'account', label: 'Account', icon: User, description: 'Name, hub name, tariff' },
+      { id: 'notifications', label: 'Notifications', icon: Bell, description: 'Delivery not available yet' },
     ],
   },
   {
     label: 'System',
     items: [
-      { id: 'thresholds', label: 'Thresholds', icon: AlertCircle, description: 'Safety limits' },
+      { id: 'thresholds', label: 'Alert levels', icon: AlertCircle, description: 'When load alerts open' },
       { id: 'devices', label: 'Devices', icon: Wifi, description: 'Hubs & facilities' },
-      { id: 'share', label: 'Share Access', icon: Share2, description: 'Codes & permissions' },
-      { id: 'api', label: 'API Access', icon: Code, description: 'Developer keys' },
+      { id: 'share', label: 'Share Access', icon: Share2, description: 'Who can see or switch' },
+      { id: 'api', label: 'AI Key', icon: Code, description: 'Gemini key for the assistant' },
     ],
   },
 ]

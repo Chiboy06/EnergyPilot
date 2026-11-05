@@ -18,7 +18,7 @@ import {
 const navItems = [
   { href: "/dashboard",             icon: LayoutDashboard, label: "Overview"    },
   { href: "/dashboard/circuits",    icon: Activity,        label: "Circuits"    },
-  { href: "/dashboard/predictions", icon: TrendingUp,      label: "Predictions" },
+  { href: "/dashboard/predictions", icon: TrendingUp,      label: "24-h Estimate" },
   { href: "/dashboard/analytics",   icon: BarChart3,       label: "Analytics"   },
   { href: "/dashboard/ai",          icon: MessageSquare,   label: "Energenius"  },
   { href: "/dashboard/settings",    icon: Settings,        label: "Settings"    },
@@ -27,10 +27,10 @@ const navItems = [
 export function DashboardSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { signOut } = useClerk();
-  const { hubState, circuitStates, activeHub } = useHubData();
+  const { circuitStates, activeHub, isFresh } = useHubData();
 
-  const isOnline = hubState?.isOnline ?? false;
-  const activeCircuits = circuitStates.filter(c => c.powerW > 0).length;
+  const isOnline = isFresh;
+  const activeCircuits = circuitStates.filter(c => c.hasReading && c.currentAmps > 0).length;
   const totalCircuits = circuitStates.length || (activeHub ? '?' : 0);
 
   return (
@@ -103,19 +103,19 @@ export function DashboardSidebar({ onNavigate }: { onNavigate?: () => void }) {
         <div className="flex items-center gap-2 mb-2">
           <Wifi size={13} style={{ color: isOnline ? "#18e39a" : "rgba(255,107,107,0.8)" }} />
           <span className="text-[9px] font-semibold tracking-[0.15em] uppercase" style={{ color: "rgba(24,227,154,0.6)" }}>
-            Edge Mesh
+            Hub status
           </span>
         </div>
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11.5px]" style={{ color: "rgba(148,163,184,0.8)" }}>Hub</span>
           <span className="font-mono text-[11.5px]" style={{ color: isOnline ? "#18e39a" : "rgba(255,107,107,0.8)" }}>
-            {activeHub ? (isOnline ? "Online" : "Offline") : "—"}
+            {activeHub ? (isOnline ? "Reporting" : "No data 30 s+") : "—"}
           </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-[11.5px]" style={{ color: "rgba(148,163,184,0.8)" }}>Circuits</span>
           <span className="font-mono text-[11.5px] text-white">
-            {activeHub ? `${activeCircuits} / ${totalCircuits} active` : "—"}
+            {activeHub ? `${activeCircuits} / ${totalCircuits} drawing` : "—"}
           </span>
         </div>
       </div>

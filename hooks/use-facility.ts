@@ -1,33 +1,21 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { useUser } from "@clerk/nextjs";
 import { api } from "@/convex/_generated/api";
 
 export function useFacility() {
-  const { user } = useUser();
-
-  const currentUser = useQuery(
-    api.users.getCurrentUserByClerkId,
-    user?.id ? { clerkId: user.id } : "skip"
-  );
-
-  const facilities = useQuery(
-    api.onboarding.listFacilities,
-    user?.id ? { clerkId: user.id } : "skip"
-  );
-
-  const hubs = useQuery(
-    api.onboarding.listHubs,
-    user?.id ? { clerkId: user.id } : "skip"
-  );
+  const currentUser = useQuery(api.users.getMe, {});
+  const facilities = useQuery(api.onboarding.listFacilities, {});
+  const hubs = useQuery(api.onboarding.listHubs, {});
 
   const activeFacility =
     facilities?.find((f) => f._id === currentUser?.activeFacilityId) ??
     facilities?.[0] ??
     null;
 
-  const activeHub = hubs?.[0] ?? null;
+  // The hub in the active facility (owned or shared), else the first one.
+  const activeHub =
+    hubs?.find((h) => h.facilityId === activeFacility?._id) ?? hubs?.[0] ?? null;
 
   return {
     activeHub,

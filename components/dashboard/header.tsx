@@ -1,37 +1,44 @@
 "use client";
 
-import { useUser, useClerk } from "@clerk/nextjs";
+import { useUser } from "@clerk/nextjs";
 import { Bell, ChevronRight, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { DashboardSidebar } from "./sidebar";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
+import Link from "next/link";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { useHubData } from "@/hooks/use-hub-data";
 
 const ROUTE_LABELS: Record<string, string> = {
   "/dashboard":             "Overview",
   "/dashboard/circuits":    "Circuits",
-  "/dashboard/predictions": "Predictions",
+  "/dashboard/predictions": "24-h Estimate",
+  "/dashboard/ai":          "Energenius AI",
   "/dashboard/analytics":   "Analytics",
   "/dashboard/settings":    "Settings",
   "/dashboard/alerts":      "Alerts",
-  "/dashboard/more":        "More",
 };
 
 export function DashboardHeader() {
   const { user } = useUser();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { hubState } = useHubData();
+  const { hubState, isFresh, activeHub, userRole } = useHubData();
 
   const routeLabel = ROUTE_LABELS[pathname] ?? "Dashboard";
 
   const totalKw = hubState ? (hubState.totalPowerW / 1000).toFixed(2) : "—";
-  const anomalyCount = 0;
+  const anomalyCount = useQuery(
+    api.anomalies.getUnresolvedCount,
+    activeHub?._id ? { hubId: activeHub._id } : "skip"
+  ) ?? 0;
+  const roleLabel = !activeHub ? "" : userRole === "owner" ? "Owner" : userRole === "controller" ? "Controller (shared)" : "Viewer (shared)";
 
   const initials = [user?.firstName?.[0], user?.lastName?.[0]]
-    .filter(Boolean).join("").toUpperCase() || "OP";
+    .filter(Boolean).join("").toUpperCase() || "U";
 
   return (
     <header
@@ -72,16 +79,18 @@ export function DashboardHeader() {
       <div className="flex items-center gap-3">
         {/* Live kW reading */}
         <div className="hidden sm:flex items-center gap-2">
-          <span className="live-dot" />
-          <span className="font-mono text-[13px]" style={{ color: "#18e39a" }}>
-            {totalKw} kW
+          {isFresh && <span className="live-dot" aria-hidden />}
+          <span className="font-mono text-sm" style={{ color: isFresh ? "#18e39a" : "rgba(255,181,71,1)" }}>
+            {totalKw} kW total{!isFresh && hubState ? " · stale" : ""}
           </span>
         </div>
 
         <div className="hidden sm:block w-px h-5" style={{ background: "rgba(255,255,255,0.10)" }} />
 
         {/* Bell */}
-        <button
+        <Link
+          href="/dashboard/alerts"
+          aria-label={anomalyCount > 0 ? `${anomalyCount} open alert(s)` : "Alerts — none open"}
           className="relative w-9 h-9 grid place-items-center rounded-[10px] transition-colors"
           style={{
             background: "rgba(255,255,255,0.06)",
@@ -92,17 +101,20 @@ export function DashboardHeader() {
           <Bell size={16} />
           {anomalyCount > 0 && (
             <span
-              className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full"
-              style={{ background: "rgba(255,107,107,1)", boxShadow: "0 0 6px rgba(255,107,107,0.8)" }}
-            />
+              className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full text-[10px] font-bold grid place-items-center"
+              style={{ background: "rgba(255,107,107,1)", color: "#fff" }}
+              aria-hidden
+            >
+              {anomalyCount >= 100 ? "99+" : anomalyCount}
+            </span>
           )}
-        </button>
+        </Link>
 
         {/* Avatar */}
         <div className="flex items-center gap-2.5">
           <div className="hidden sm:block text-right">
-            <p className="text-[13px] font-semibold text-white leading-none">{user?.firstName || "Operator"}</p>
-            <p className="text-[11px] mt-0.5" style={{ color: "rgba(88,105,128,1)" }}>Admin</p>
+            <p className="text-sm font-semibold text-white leading-none">{user?.firstName || "Account"}</p>
+            {roleLabel && <p className="text-xs mt-0.5" style={{ color: "rgba(148,163,184,0.85)" }}>{roleLabel}</p>}
           </div>
           <div
             className="w-9 h-9 rounded-[10px] grid place-items-center font-bold text-[13px] flex-none"

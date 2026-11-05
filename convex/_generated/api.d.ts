@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as access from "../access.js";
 import type * as ai from "../ai.js";
 import type * as anomalies from "../anomalies.js";
 import type * as circuits from "../circuits.js";
@@ -28,6 +29,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  access: typeof access;
   ai: typeof ai;
   anomalies: typeof anomalies;
   circuits: typeof circuits;

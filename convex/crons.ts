@@ -6,12 +6,8 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// Daily forecast generation — runs at 01:00 WAT (00:00 UTC)
-// Iterates all active hubs and enqueues a forecast for each.
-crons.daily(
-  "generate forecasts",
-  { hourUTC: 0, minuteUTC: 0 },
-  internal.forecasts.generateForAllHubs
-);
+// Daily forecast generation — 01:00 WAT (00:00 UTC).
+// Schedules one forecast per recently active hub.
+crons.cron("generate forecasts", "0 0 * * *", internal.forecasts.generateForAllHubs, {});
 
 export default crons;
