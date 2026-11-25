@@ -1,5 +1,5 @@
 'use client'
-import { useRange } from '@/hooks/use-range'
+import type { Range } from '@/lib/range'
 
 import { DollarSign, Leaf, Zap } from 'lucide-react'
 import { Card } from '@/components/ui/card'
@@ -7,11 +7,11 @@ import { useQuery } from 'convex/react'
 import { api } from '@/convex/_generated/api'
 import { useHubData } from '@/hooks/use-hub-data'
 
-export function AnalyticsStats({ rangeDays = 30 }: { rangeDays?: number }) {
+export function AnalyticsStats({ range }: { range: Range }) {
   const { activeHub } = useHubData()
   const hubId = activeHub?._id
 
-  const { from, to } = useRange(rangeDays)
+  const { from, to } = range
 
   const days = useQuery(
     api.telemetry.getConsumptionByDay,
@@ -33,7 +33,7 @@ export function AnalyticsStats({ rangeDays = 30 }: { rangeDays?: number }) {
       label: 'Energy Used',
       value: fmt(totalKwh),
       unit: 'kWh',
-      sub: days ? `Whole system · sum of ${days.length} day(s) with data in the last ${rangeDays} days` : 'Loading…',
+      sub: days ? `Whole system · sum of ${days.length} day(s) with data in ${range.label}` : 'Loading…',
       icon: Zap,
     },
     {

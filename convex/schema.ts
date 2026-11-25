@@ -51,6 +51,7 @@ export default defineSchema({
       v.literal("offline")
     ),
     lastSeenAt: v.optional(v.number()),
+    demoLiveUntil: v.optional(v.number()), // demo live feed runs until this time (ms)
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])
@@ -130,6 +131,7 @@ relayStates: defineTable({
     totalPowerW: v.number(),
     timestamp: v.number(),
     receivedAt: v.number(),
+    demo: v.optional(v.boolean()),   // written by convex/demo.ts; removed by demo:purge
   }).index("by_hub_time", ["hubId", "timestamp"]),
 
   channelReadings: defineTable({
@@ -140,6 +142,7 @@ relayStates: defineTable({
     powerW: v.number(),
     timestamp: v.number(),
     receivedAt: v.number(),
+    demo: v.optional(v.boolean()),
   })
     .index("by_circuit_time", ["circuitId", "timestamp"])
     .index("by_hub_time", ["hubId", "timestamp"]),
@@ -182,6 +185,7 @@ relayStates: defineTable({
     threshold:  v.number(),
     resolvedAt: v.optional(v.number()),
     timestamp:  v.number(),
+    demo:       v.optional(v.boolean()),
   })
     .index("by_hub_time",       ["hubId",  "timestamp"])
     .index("by_user_time",      ["userId", "timestamp"])
@@ -250,6 +254,7 @@ relayStates: defineTable({
     peakW:  v.number(),
     vSum:   v.number(),
     n:      v.number(),
+    demo:   v.optional(v.boolean()),
   }).index("by_hub_day", ["hubId", "day"]),
 
   circuitDailyEnergy: defineTable({
@@ -257,6 +262,7 @@ relayStates: defineTable({
     hubId:     v.id("hubs"),
     day:       v.string(),
     kwh:       v.number(),
+    demo:      v.optional(v.boolean()),
   })
     .index("by_circuit_day", ["circuitId", "day"])
     .index("by_hub_day", ["hubId", "day"]),

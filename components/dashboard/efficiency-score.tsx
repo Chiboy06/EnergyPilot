@@ -1,5 +1,5 @@
 'use client'
-import { useRange } from '@/hooks/use-range'
+import type { Range } from '@/lib/range'
 
 import { useMemo } from 'react'
 import { Card } from '@/components/ui/card'
@@ -24,13 +24,13 @@ function gradeColor(g: string) {
   return 'text-red-400'
 }
 
-// Day-to-day consistency of total energy use over the last 30 days.
+// Day-to-day consistency of total energy use over the selected range.
 // This is NOT an efficiency rating and has no comparison with other homes.
-export function EfficiencyScore() {
+export function EfficiencyScore({ range }: { range: Range }) {
   const { activeHub } = useHubData()
   const hubId = activeHub?._id
 
-  const { from, to } = useRange(30)
+  const { from, to } = range
 
   const days = useQuery(
     api.telemetry.getConsumptionByDay,
@@ -56,8 +56,8 @@ export function EfficiencyScore() {
     const threshold = avg * 1.2
     const goodDays = kwhs.filter(k => k <= threshold).length
     const opt = Math.round((goodDays / kwhs.length) * 100)
-    return { grade: g, score: s, optimizerPct: opt, subLabel: `Based on ${days.length} day(s) of data in the last 30 days` }
-  }, [days])
+    return { grade: g, score: s, optimizerPct: opt, subLabel: `Based on ${days.length} day(s) of data in ${range.label}` }
+  }, [days, range.label])
 
   const isLoading = days === undefined && !!hubId
 
@@ -65,7 +65,7 @@ export function EfficiencyScore() {
     <Card className="p-6">
       <h3 className="text-xl lg:text-2xl font-semibold text-foreground">Usage Consistency</h3>
       <p className="text-sm text-muted-foreground mt-1 mb-6">
-        How steady your daily energy use is (100 = every day the same). Always the last 30 days; not an efficiency rating.
+        How steady your daily energy use is (100 = every day the same). Uses the selected range; not an efficiency rating.
       </p>
 
       {isLoading ? (

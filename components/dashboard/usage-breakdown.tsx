@@ -1,5 +1,5 @@
 'use client'
-import { useRange } from '@/hooks/use-range'
+import type { Range } from '@/lib/range'
 
 import { useMemo } from 'react'
 import { Card } from '@/components/ui/card'
@@ -16,11 +16,11 @@ const LOAD_TYPE_META: Record<string, { label: string; color: string }> = {
   other:      { label: 'Other',      color: 'bg-gray-500' },
 }
 
-export function UsageBreakdown({ rangeDays = 30 }: { rangeDays?: number }) {
+export function UsageBreakdown({ range }: { range: Range }) {
   const { activeHub } = useHubData()
   const hubId = activeHub?._id
 
-  const { from, to } = useRange(rangeDays)
+  const { from, to } = range
 
   const circuits = useQuery(
     api.telemetry.getConsumptionByCircuit,
@@ -51,7 +51,7 @@ export function UsageBreakdown({ rangeDays = 30 }: { rangeDays?: number }) {
     <Card className="p-6">
       <h3 className="text-xl lg:text-2xl font-semibold text-foreground">Energy by Load Type</h3>
       <p className="text-sm text-muted-foreground mt-1 mb-6">
-        Per-circuit daily totals for the last {rangeDays} days, grouped by each circuit&apos;s load type. Circuits without a type count as General.
+        Per-circuit daily totals for {range.label}, grouped by each circuit&apos;s load type. Circuits without a type count as General.
       </p>
 
       {circuits === undefined && !!hubId ? (

@@ -48,7 +48,8 @@ export async function addToRollups(
   tsSec: number,
   voltage: number,
   totalPowerW: number,
-  circuitPowers: { circuitId: Id<"circuits">; powerW: number }[]
+  circuitPowers: { circuitId: Id<"circuits">; powerW: number }[],
+  demo?: boolean
 ) {
   const { day, dayStart } = watDay(tsSec);
   const hubDay = await ctx.db
@@ -64,7 +65,7 @@ export async function addToRollups(
     });
   } else {
     await ctx.db.insert("hubDailyEnergy", {
-      hubId, day, dayStart, kwh: frameKwh(totalPowerW), peakW: totalPowerW, vSum: voltage, n: 1,
+      hubId, day, dayStart, kwh: frameKwh(totalPowerW), peakW: totalPowerW, vSum: voltage, n: 1, demo,
     });
   }
 
@@ -74,7 +75,7 @@ export async function addToRollups(
       .withIndex("by_circuit_day", (q) => q.eq("circuitId", circuitId).eq("day", day))
       .unique();
     if (row) await ctx.db.patch(row._id, { kwh: row.kwh + frameKwh(powerW) });
-    else await ctx.db.insert("circuitDailyEnergy", { circuitId, hubId, day, kwh: frameKwh(powerW) });
+    else await ctx.db.insert("circuitDailyEnergy", { circuitId, hubId, day, kwh: frameKwh(powerW), demo });
   }
 }
 
@@ -86,9 +87,11 @@ export const ingest = internalMutation({
     totalCurrent: v.number(),
     timestamp:    v.number(),
     channels:     v.array(v.number()),
+    demo:         v.optional(v.boolean()), // only set by convex/demo.ts, never by the HTTP endpoint
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+    const demo = args.demo || undefined;
 
     // Resolve hub by MAC address
     const hub = await ctx.db
@@ -148,6 +151,7 @@ export const ingest = internalMutation({
       totalPowerW,
       timestamp:        args.timestamp,
       receivedAt:       now,
+      demo,
     });
 
     // 4. Insert per-circuit readings
@@ -178,11 +182,12 @@ export const ingest = internalMutation({
         powerW,
         timestamp:   args.timestamp,
         receivedAt:  now,
+        demo,
       });
     }
 
     // 5. Daily energy rollups
-    await addToRollups(ctx, hub._id, args.timestamp, args.voltage, totalPowerW, circuitPowers);
+    await addToRollups(ctx, hub._id, args.timestamp, args.voltage, totalPowerW, circuitPowers, demo);
 
     // Detect anomalies from this frame and record if new
     await ctx.runMutation(internal.anomalies.detectAndRecord, {
@@ -193,6 +198,7 @@ export const ingest = internalMutation({
       totalPowerW,
       channels:         args.channels,
       timestamp:        args.timestamp,
+      demo,
     });
   },
 });

@@ -13,6 +13,7 @@ import type * as ai from "../ai.js";
 import type * as anomalies from "../anomalies.js";
 import type * as circuits from "../circuits.js";
 import type * as crons from "../crons.js";
+import type * as demo from "../demo.js";
 import type * as forecasts from "../forecasts.js";
 import type * as http from "../http.js";
 import type * as onboarding from "../onboarding.js";
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   anomalies: typeof anomalies;
   circuits: typeof circuits;
   crons: typeof crons;
+  demo: typeof demo;
   forecasts: typeof forecasts;
   http: typeof http;
   onboarding: typeof onboarding;

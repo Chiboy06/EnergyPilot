@@ -264,6 +264,7 @@ export function CircuitGrid({ filter }: CircuitGridProps) {
           loadType={modalCircuit.loadType}
           channelIndex={modalCircuit.channelIndex}
           maxAmps={modalCircuit.maxAmps}
+          canEditRating={isOwner}
           onClose={() => setModalCircuitId(null)}
         />
       )}

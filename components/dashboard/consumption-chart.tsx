@@ -1,5 +1,5 @@
 'use client'
-import { useRange } from '@/hooks/use-range'
+import type { Range } from '@/lib/range'
 
 import { useMemo, useState } from 'react'
 import { Card } from '@/components/ui/card'
@@ -11,12 +11,12 @@ import { useHubData } from '@/hooks/use-hub-data'
 
 type Metric = 'consumption' | 'cost'
 
-export function ConsumptionChart({ rangeDays = 30 }: { rangeDays?: number }) {
+export function ConsumptionChart({ range }: { range: Range }) {
   const [metric, setMetric] = useState<Metric>('consumption')
   const { activeHub } = useHubData()
   const hubId = activeHub?._id
 
-  const { from, to } = useRange(rangeDays)
+  const { from, to } = range
 
   const days = useQuery(
     api.telemetry.getConsumptionByDay,
@@ -47,7 +47,7 @@ export function ConsumptionChart({ rangeDays = 30 }: { rangeDays?: number }) {
             {metric === 'consumption'
               ? 'Total kWh per calendar day (WAT), whole system'
               : `Estimated cost per day at ₦${tariff?.tariffPerKwh ?? '…'}/kWh${tariff?.isDefault ? ' (app default — set your tariff in Settings → Account)' : ' (your tariff)'}`}
-            {' · '}selected range: last {rangeDays} days{days ? ` · ${days.length} day(s) with data` : ''}
+            {' · '}selected range: {range.label}{days ? ` · ${days.length} day(s) with data` : ''}
           </p>
           <p className="text-sm text-muted-foreground mt-1">
             Each bar is one day&apos;s total, summed from every 5-second reading received that day. Days the hub was offline are missing or lower.

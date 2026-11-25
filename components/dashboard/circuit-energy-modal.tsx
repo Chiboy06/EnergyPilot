@@ -7,7 +7,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
@@ -21,6 +21,7 @@ interface CircuitEnergyModalProps {
   loadType?: string;
   channelIndex: number;
   maxAmps?: number;
+  canEditRating: boolean;
   onClose: () => void;
 }
 
@@ -40,9 +41,24 @@ export function CircuitEnergyModal({
   loadType,
   channelIndex,
   maxAmps,
+  canEditRating,
   onClose,
 }: CircuitEnergyModalProps) {
   const [metric, setMetric] = useState<Metric>("current");
+  const setRating = useMutation(api.circuits.setRating);
+  const [ratingDraft, setRatingDraft] = useState<string | null>(null);
+  const [ratingError, setRatingError] = useState<string | null>(null);
+  const ratingText = ratingDraft ?? (maxAmps ? String(maxAmps) : "");
+  const saveRating = async () => {
+    setRatingError(null);
+    const value = ratingText.trim() === "" ? null : Number(ratingText);
+    try {
+      await setRating({ circuitId, maxAmps: value });
+      setRatingDraft(null);
+    } catch (e) {
+      setRatingError(e instanceof Error ? e.message : "Could not save the rating");
+    }
+  };
 
   const readings = useQuery(api.telemetry.getCircuitReadings, { circuitId, limit: 60 });
 
@@ -231,6 +247,35 @@ export function CircuitEnergyModal({
             : "Thresholds are configured in amps — switch to Current (A) to see the configured rating."}
           {" "}Showing the last {chartData.length} readings (about one every 5 s).
         </p>
+
+        {canEditRating && (
+          <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <label htmlFor="circuit-rating" className="block text-sm font-semibold text-white mb-1">Breaker rating for this circuit (A)</label>
+            <p className="text-xs mb-2" style={{ color: "rgba(148,163,184,0.85)" }}>
+              Enter the rating printed on this circuit&apos;s breaker. It sets HIGH LOAD (85%) and overload alerts (90%). Leave empty to clear.
+            </p>
+            <div className="flex gap-2">
+              <input
+                id="circuit-rating"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                value={ratingText}
+                onChange={(e) => setRatingDraft(e.target.value)}
+                className="flex-1 rounded-lg px-3 py-1.5 text-white bg-slate-800/60 border border-slate-700"
+              />
+              <button
+                onClick={saveRating}
+                disabled={ratingDraft === null}
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold disabled:opacity-50"
+                style={{ background: "#18e39a", color: "#03130c" }}
+              >
+                Save
+              </button>
+            </div>
+            {ratingError && <p role="alert" className="text-sm text-red-400 mt-2">{ratingError}</p>}
+          </div>
+        )}
       </div>
     </div>
   );

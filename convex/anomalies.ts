@@ -32,6 +32,7 @@ export const detectAndRecord = internalMutation({
     totalPowerW:      v.number(),
     channels:         v.array(v.number()),
     timestamp:        v.number(),  // Unix epoch seconds from firmware
+    demo:             v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const now = args.timestamp * 1000;
@@ -147,6 +148,7 @@ export const detectAndRecord = internalMutation({
         value:     a.value,
         threshold: a.threshold,
         timestamp: now,
+        demo:      args.demo || undefined,
       });
     }
   },
