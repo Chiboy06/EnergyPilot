@@ -218,10 +218,23 @@ export const liveTick = internalMutation({
     const plan = planDay(watDay(ts).dayStart);
     plan.outages = []; // keep the feed running while presenting
     const f = frameAt(ts, hub.channelCount, plan, rng(ts));
+
+    // Act like the hub firmware: confirm pending relay commands, and an OFF
+    // relay draws no current. Relays with no known state are treated as ON.
+    const relays = await ctx.db
+      .query("relayStates")
+      .withIndex("by_hub", (q) => q.eq("hubId", hub._id))
+      .take(64);
+    const off = new Set(relays.filter((r) => !r.state).map((r) => r.relayNum));
+    for (const r of relays) {
+      if (r.pending) await ctx.db.patch(r._id, { pending: false, source: "firmware", updatedAt: Date.now() });
+    }
+
     if (f) {
+      const channels = f.channels.map((a, i) => (off.has(i) ? 0 : a));
       await ctx.runMutation(internal.telemetry.ingest, {
-        macAddress: hub.macAddress, voltage: f.voltage, totalCurrent: f.totalCurrent,
-        timestamp: ts, channels: f.channels, demo: true,
+        macAddress: hub.macAddress, voltage: f.voltage, totalCurrent: channels.reduce((sum, a) => sum + a, 0),
+        timestamp: ts, channels, demo: true,
       });
     }
     await ctx.scheduler.runAfter(LIVE_INTERVAL_MS, internal.demo.liveTick, { hubId: hub._id });

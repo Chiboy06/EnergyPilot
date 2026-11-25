@@ -92,3 +92,20 @@ test("the live feed goes through normal ingest, marked demo, and stops on time",
   expect(readings.every((r) => r.demo)).toBe(true);
   expect(state?.channelCurrents).toHaveLength(8);
 });
+
+test("while live, an OFF relay reads 0 A and pending commands are confirmed", async () => {
+  vi.useFakeTimers();
+  const { t, owner, hubId } = await setup();
+  await t.run((ctx) => ctx.db.insert("relayStates", {
+    hubId, userId: owner, relayNum: 0, state: false, updatedAt: 0, source: "cloud", pending: true,
+  }));
+  await t.mutation(internal.demo.startLive, { hubId, minutes: 0.05 });
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  const { state, relay } = await t.run(async (ctx) => ({
+    state: await ctx.db.query("hubState").first(),
+    relay: await ctx.db.query("relayStates").first(),
+  }));
+  expect(state?.channelCurrents[0]).toBe(0);
+  expect(state!.channelCurrents.slice(1).some((a) => a > 0)).toBe(true);
+  expect(relay).toMatchObject({ state: false, pending: false, source: "firmware" });
+});

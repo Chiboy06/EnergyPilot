@@ -132,6 +132,9 @@ export const rollback = internalMutation({
     previous: v.array(v.object({ relayNum: v.number(), state: v.optional(v.boolean()) })),
   },
   handler: async (ctx, args) => {
+    // While the demo feed runs it stands in for the hub and confirms commands itself.
+    const hub = await ctx.db.get(args.hubId);
+    if ((hub?.demoLiveUntil ?? 0) > Date.now()) return;
     for (const p of args.previous) {
       const doc = await ctx.db
         .query("relayStates")
