@@ -22,6 +22,8 @@ import { internal } from "./_generated/api";
 import { getHubReadAccess, requireHubControlAccess } from "./access";
 
 const MASTER = 255;
+// No confirmation from the hub within this time = the command was lost; revert.
+const ACK_TIMEOUT_MS = 20_000;
 
 // Upsert one relay's state. Returns the previous state (undefined = never known).
 async function writeRelay(
@@ -80,6 +82,7 @@ export const sendCommand = mutation({
       state:      args.state,
       previous,
     });
+    await ctx.scheduler.runAfter(ACK_TIMEOUT_MS, internal.relay.rollback, { hubId: hub._id, previous });
 
     return { success: true };
   },

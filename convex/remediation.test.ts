@@ -213,3 +213,21 @@ describe("AI relay control", () => {
     await expect(as("stranger").action(api.ai.createLiveToken, { hubId })).rejects.toThrow(/access denied/);
   });
 });
+
+describe("relay confirmation timeout", () => {
+  test("a command the hub never confirms reverts and unlocks after 20 s", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", { status: 200 }))); // Lambda accepts, hub silent
+    process.env.RELAY_LAMBDA_URL = "https://lambda.test";
+    process.env.IOT_RELAY_SECRET = "s";
+    const { t, as, owner, hubId } = await setup();
+    await t.run((ctx) => ctx.db.insert("relayStates", {
+      hubId, userId: owner, relayNum: 2, state: true, updatedAt: 0, source: "firmware", pending: false,
+    }));
+    await as("owner").mutation(api.relay.sendCommand, { hubId, relayNum: 2, state: false });
+    expect(await as("owner").query(api.relay.getRelayStates, { hubId })).toMatchObject([{ state: false, pending: true }]);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await as("owner").query(api.relay.getRelayStates, { hubId })).toMatchObject([{ state: true, pending: false }]);
+    vi.useRealTimers();
+  });
+});
